@@ -1,0 +1,25 @@
+[gd_scene load_steps=3 format=3 uid="uid://demo_shader_scene"]
+
+[ext_resource type="Shader" path="res://shaders/grid_floor.gdshader" id="1_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_1"]
+shader = ExtResource("1_shader")
+shader_parameter/base_color = Color(0.4, 0.45, 0.5, 1)
+shader_parameter/mortar_color = Color(0.1, 0.1, 0.1, 1)
+shader_parameter/tile_size = 32.0
+shader_parameter/border_width = 2.0
+
+[node name="DemoShader" type="Node2D"]
+
+[node name="ProceduralFloor" type="ColorRect" parent="."]
+material = SubResource("ShaderMaterial_1")
+offset_right = 512.0
+offset_bottom = 512.0
+color = Color(1, 1, 1, 1)
+
+[node name="Label" type="Label" parent="."]
+offset_left = 10.0
+offset_top = 10.0
+offset_right = 200.0
+offset_bottom = 33.0
+text = "Procedural Tileset Shader"
