@@ -1,0 +1,17 @@
+[gd_scene load_steps=4 format=3 uid="uid://l7sgyk4wygom"]
+
+[ext_resource type="StyleBox" uid="uid://vf5d15k0kdn6" path="res://HP_Fill_Style.tres" id="1_hjcmh"]
+[ext_resource type="Script" uid="uid://dl2tnj8pxdsjd" path="res://FloatingHealthBar.gd" id="1_ktvag"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_iv3em"]
+bg_color = Color(0.6, 0.6, 0.6, 0)
+
+[node name="FloatingHealthBar" type="ProgressBar"]
+z_index = 10
+offset_right = 8.0
+offset_bottom = 1.0
+mouse_filter = 2
+theme_override_styles/background = SubResource("StyleBoxFlat_iv3em")
+theme_override_styles/fill = ExtResource("1_hjcmh")
+show_percentage = false
+script = ExtResource("1_ktvag")
