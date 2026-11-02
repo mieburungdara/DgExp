@@ -12,16 +12,16 @@ script = ExtResource("1_1bvp3")
 position = Vector2(-831.7123, 43.631714)
 
 [node name="Slime" parent="." instance=ExtResource("3_1bvp3")]
-position = Vector2(-16, 272)
+position = Vector2(-26, 213)
 
 [node name="Slime2" parent="." instance=ExtResource("3_1bvp3")]
-position = Vector2(720, 272)
+position = Vector2(714, 248)
 
 [node name="Slime3" parent="." instance=ExtResource("3_1bvp3")]
-position = Vector2(592, 144)
+position = Vector2(601, 119)
 
 [node name="Player" parent="." instance=ExtResource("2_h2yge")]
-position = Vector2(16, 304)
+position = Vector2(22, 283)
 
 [node name="Camera2D" type="Camera2D" parent="Player"]
 zoom = Vector2(3, 3)
