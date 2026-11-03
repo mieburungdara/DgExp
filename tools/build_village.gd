@@ -194,7 +194,7 @@ func build_scene(ts: TileSet) -> PackedScene:
     var portal := Area2D.new()
     portal.name = "PortalToDungeon"
     portal.set_script(load("res://portal.gd"))
-    portal.set("target_map_group", "dungeon_map")
+    portal.set("target_map_id", &"dungeon")
     portal.set("label", "Ke Dungeon")
     root.add_child(portal)
     portal.owner = root

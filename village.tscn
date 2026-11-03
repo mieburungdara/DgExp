@@ -20,7 +20,7 @@ position = Vector2(328, 264)
 [node name="PortalToDungeon" type="Area2D" parent="."]
 position = Vector2(312, 264)
 script = ExtResource("3_wybox")
-target_map_group = "dungeon_map"
+target_map_id = &"dungeon"
 label = "Ke Dungeon"
 
 [node name="SpawnPoints" type="Node2D" parent="."]
