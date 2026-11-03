@@ -39,7 +39,8 @@ TILES = [
     ("flower_pot", True), ("stall", True), ("dummy", True), ("trough", True),
     ("logs", True), ("bench", True),
     ("shadow_bottom", False), ("shadow_right", False), ("shadow_corner", False),
-    ("shadow_prop", False), ("empty", False),
+    ("shadow_prop", False), ("empty", False), ("water_block", True),
+    ("bridge", False),
 ]
 
 NAME_TO_IDX = {name: i for i, (name, _) in enumerate(TILES)}
@@ -173,6 +174,24 @@ def key_grass(tile, ref, hard=52, soft=74):
     return out
 
 
+def make_bridge():
+    """Jembatan papan: dua rel samping dan papan melintang, cukup kontras dari
+    air biru di bawahnya."""
+    img = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    wood = (122, 82, 44)
+    wood_dark = (86, 56, 30)
+    wood_light = (154, 108, 60)
+    d.rectangle((0, 0, CELL - 1, CELL - 1), fill=wood)
+    for i in range(0, CELL, 4):
+        d.line((0, i, CELL - 1, i), fill=wood_dark if (i // 4) % 2 else wood_light, width=1)
+    d.rectangle((0, 0, 3, CELL - 1), fill=wood_dark)
+    d.rectangle((CELL - 4, 0, CELL - 1, CELL - 1), fill=wood_dark)
+    d.rectangle((0, 0, CELL - 1, 1), fill=wood_light)
+    d.rectangle((0, CELL - 2, CELL - 1, CELL - 1), fill=wood_light)
+    return img
+
+
 def build():
     ground = Image.open(GROUND_SHEET).convert("RGB")
     props = Image.open(PROPS_SHEET).convert("RGB")
@@ -253,6 +272,10 @@ def build():
     for col, row, name in prop_order:
         tile = grass_match(cell(props, col, row), gmed, pmed)
         t[name] = key_grass(tile, gmed)
+
+    # --- air: blok transparan ber-collision untuk layer objek, dan jembatan ---
+    t["water_block"] = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    t["bridge"] = make_bridge()
 
     # --- tile kosong transparan: dipakai layer objek supaya sel yang tidak
     # berisi objek tetap tercatat ada (GridPath membaca layer itu) ---

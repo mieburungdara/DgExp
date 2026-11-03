@@ -61,10 +61,12 @@ const SHADOW_RIGHT := 42
 const SHADOW_CORNER := 43
 const SHADOW_PROP := 44
 const EMPTY := 45
+const WATER_BLOCK := 46
+const BRIDGE := 47
 
 const LEGEND := [".", "*", "g", "w", "c", "d", "b", "~", "A", "W", "P", "D", "n", "R", "p",
     "S", "s", "T", "t", "C", "X", "x", "u", "y", "f", "h", "#", "=", "o", "B", "K", "v",
-    "H", "L", "i", "q", "M", "J", "r", "Z", "V", "_", "'", ",", ":", "."]
+    "H", "L", "i", "q", "M", "J", "r", "Z", "V", "_", "'", ",", ":", ".", "A", "j"]
 
 # Bangunan mendapat bayangan memanjang di sisi kanan-bawah; pohon dan prop cukup
 # satu blob kecil di bawahnya.
@@ -85,6 +87,7 @@ const HANDMADE := [WALL_WOOD, WALL_PLASTER, WALL_DOOR, WALL_WINDOW, ROOF_CLAY, R
 var _g: Array[int] = []
 var _o: Array[int] = []
 var _s: Array[int] = []
+var _w: Array[int] = []
 var _solid: Dictionary = {}
 var _rng := RandomNumberGenerator.new()
 var _lanterns: Array[Vector2i] = []
@@ -148,6 +151,8 @@ func _initialize() -> void:
     _o.fill(EMPTY)
     _s.resize(W * H)
     _s.fill(EMPTY)
+    _w.resize(W * H)
+    _w.fill(EMPTY)
 
     paint()
     dump()
@@ -171,6 +176,7 @@ func paint() -> void:
     paint_ground()
     paint_forest_border()
     paint_pond()
+    paint_stream()
     paint_roads()
     paint_houses()
     paint_extras()
@@ -231,17 +237,45 @@ func paint_pond() -> void:
             var wob := 1.0 + 0.28 * float(((x * 7 + y * 13) % 5) - 2) / 2.0
             if dx * dx + dy * dy <= wob * wob:
                 _putg(x, y, DIRT)
-                _puto(x, y, WATER_EDGE if y == 3 else WATER)
+                _putw(x, y, WATER_EDGE if y == 3 else WATER)
+                _puto(x, y, WATER_BLOCK)
     _puto(27, 5, ROCK)
     _puto(27, 7, FERN)
     _puto(40, 4, ROCK)
     _puto(30, 9, TROUGH)
     _puto(31, 9, FERN)
 
+# Sungai ke barat daya: keluar dari hutan, diseberangi jembatan di ujung gang
+# penghubung, dan berhenti di bank timur. Visualnya di WaterLayer, solidnya
+# WATER_BLOCK transparan di ObjectLayer supaya GridPath tetap menolak air.
+func paint_stream() -> void:
+    for x in range(2, 32):
+        _putg(x, 25, DIRT)
+        _putg(x, 26, DIRT)
+        _putw(x, 25, WATER_EDGE)
+        _putw(x, 26, WATER)
+        _puto(x, 25, WATER_BLOCK)
+        _puto(x, 26, WATER_BLOCK)
+    # Jembatan segaris dengan gang utara-selatan.
+    recto(21, 25, 22, 26, BRIDGE)
+    rectg(21, 25, 22, 26, DIRT)
+    # Bank: batu dan alang-alang, pagar pendek menahan kambing tidak ke air.
+    _puto(19, 24, ROCK)
+    _puto(24, 24, FERN)
+    _puto(14, 27, ROCK)
+    _puto(15, 27, FERN)
+    _puto(28, 27, SHRUB_FLOWER)
+
+func _putw(x: int, y: int, idx: int) -> void:
+    _w[y * W + x] = idx
+
 func paint_roads() -> void:
     rectg(2, 14, W - 3, 16, DIRT)
     rectg(2, 22, W - 3, 23, DIRT)
-    rectg(21, 11, 22, 24, DIRT)
+    rectg(21, 11, 22, 27, DIRT)
+    # Jalur pantai selatan, menyambung ke ujung jembatan. Tanpa ini tepi hutan
+    # yang dirobek acak menutup strip di antara sungai dan hutan selatan.
+    rectg(4, 27, 31, 27, DIRT)
     rectg(16, 11, 27, 13, COBBLE)
     rectg(17, 14, 26, 17, COBBLE)
     clear_path_objects()
@@ -253,7 +287,9 @@ func clear_path_objects() -> void:
     for y in range(H):
         for x in range(W):
             var o := _oi(x, y)
-            if o == WATER or o == WATER_EDGE:
+            # Air, blok air, dan jembatan memang sengaja duduk di atas tanah
+            # jalan; yang boleh dibersihkan hanya sisa hutan dan semak.
+            if o == WATER or o == WATER_EDGE or o == WATER_BLOCK or o == BRIDGE:
                 continue
             if _gi(x, y) == DIRT or _gi(x, y) == COBBLE:
                 _puto(x, y, EMPTY)
@@ -313,8 +349,8 @@ func paint_extras() -> void:
     _puto(10, 11, CART)
     _puto(29, 12, LOGS)
     _puto(30, 12, BARREL)
-    _puto(8, 26, DUMMY)
-    _puto(9, 26, LOGS)
+    _puto(5, 24, DUMMY)
+    _puto(6, 24, LOGS)
     _puto(36, 12, HAYSTACK)
 
     fence_row(4, 12, 10)
@@ -396,7 +432,7 @@ func paint_shadows() -> void:
     for y in range(H):
         for x in range(W):
             var o := _oi(x, y)
-            if o == EMPTY or not _is_solid(o):
+            if o == EMPTY or o == WATER_BLOCK or not _is_solid(o):
                 continue
             if o in BUILDING:
                 _shadow(SHADOW_BOTTOM, x, y + 1)
@@ -449,7 +485,7 @@ func dump() -> void:
         var line := ""
         for x in range(W):
             var o := _oi(x, y)
-            if o == EMPTY:
+            if o == EMPTY or o == WATER_BLOCK:
                 line += " " if _gi(x, y) == DIRT or _gi(x, y) == COBBLE else "."
             else:
                 line += LEGEND[o]
@@ -469,6 +505,13 @@ func build_scene(ts: TileSet) -> PackedScene:
     var ground := make_layer("GroundLayer", ts, _g)
     root.add_child(ground)
     ground.owner = root
+    var water := make_layer("WaterLayer", ts, _w)
+    var shimmer := ShaderMaterial.new()
+    shimmer.shader = load("res://shaders/water_shimmer.gdshader")
+    water.material = shimmer
+    root.add_child(water)
+    water.owner = root
+
     var shadow := make_layer("ShadowLayer", ts, _s)
     root.add_child(shadow)
     shadow.owner = root
