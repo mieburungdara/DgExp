@@ -17,9 +17,8 @@ const KILL_REWARD := 10 # koin per monster yang mati
 @export var monster_cap: int = 10 # batas monster per peta
 
 @onready var player: CharacterBody2D = $Player
-@onready var list_container: VBoxContainer = $CanvasLayer/MonsterList
+@onready var hud: CanvasLayer = $HUD
 @onready var spawn_timer: Timer = $SpawnTimer
-@onready var coins_label: Label = $CanvasLayer/CoinsLabel
 @onready var shop: CanvasLayer = $Shop
 
 signal coins_changed(new_coins: int)
@@ -27,6 +26,7 @@ signal coins_changed(new_coins: int)
 var current_map: Node
 var warp_lock := 0.0
 var coins := 0 # tidak ikut terbuang saat scene peta berganti
+var kills := 0
 var _saved_monsters: Dictionary = {}  # map_id -> Array[Dictionary{pos, hp}]
 var _saved_positions: Dictionary = {} # map_id -> Vector2
 
@@ -34,8 +34,13 @@ var _saved_positions: Dictionary = {} # map_id -> Vector2
 func _ready() -> void:
     spawn_timer.timeout.connect(_on_spawn_timer_timeout)
     player.map_changed.connect(refresh_monster_buttons)
+    player.hp_changed.connect(_on_player_hp_changed)
+    hud.grind_pressed.connect(refresh_monster_buttons)
+    hud.target_pressed.connect(_on_hud_target_pressed)
     coins_changed.connect(_on_coins_changed)
     _on_coins_changed(coins)
+    hud.set_kills(kills)
+    _on_player_hp_changed(player.hp, player.max_hp)
 
 
 func add_coins(amount: int) -> void:
@@ -48,7 +53,11 @@ func spend_coins(amount: int) -> void:
 
 
 func _on_coins_changed(value: int) -> void:
-    coins_label.text = "Koin: %d" % value
+    hud.set_coins(value)
+
+
+func _on_player_hp_changed(value: int, maximum: int) -> void:
+    hud.set_hp(value, maximum)
 
 
 func open_shop() -> void:
@@ -63,13 +72,14 @@ func _process(delta: float) -> void:
 # Dipanggil dari _ready() scene peta, sesaat setelah grid dan SpawnPoints-nya siap.
 func on_map_ready(map: Node) -> void:
     current_map = map
+    hud.set_map(String(map.call("get_map_label")), String(map.call("get_map_icon")))
     var id: StringName = map.call("get_map_id")
     var pos: Vector2 = _saved_positions.get(id, map.call("get_arrival_point"))
     player.enter_map(map, pos)
     _restore_monsters(id)
     refresh_monster_buttons()
     # Peta lama sudah dibuang, jadi panel toko tidak boleh tertinggal terbuka.
-    shop.close()
+    shop.close_panel()
 
 
 func warp_to(id: StringName) -> void:
@@ -157,51 +167,42 @@ func randomize_timer():
     spawn_timer.wait_time = randf_range(2.0, 7.0)
     spawn_timer.start()
 
-func _on_btn_grind_pressed():
-    refresh_monster_buttons()
-
 func refresh_monster_buttons():
-    # 1. Bersihkan daftar tombol lama
-    for child in list_container.get_children():
-        child.queue_free()
-
-    # 2. Ambil monster yang masih hidup. Hanya peta aktif yang punya monster di
-    #    tree, jadi daftar ini otomatis sesuai peta tempat player berada.
-    var all_monsters = get_tree().get_nodes_in_group("monsters")
-
-    for m in all_monsters:
+    # Hanya peta aktif yang punya monster di tree, jadi daftar ini otomatis
+    # sesuai peta tempat player berada. Chip dibangun ulang dari daftar ini;
+    # HP-nya diperbarui sendiri oleh HUD tiap setengah detik.
+    var living: Array = []
+    for m in get_tree().get_nodes_in_group("monsters"):
         if is_instance_valid(m) and not m.get("is_dead"):
-            var btn = Button.new()
-            btn.text = "Serang " + m.get("monster_name")
-            btn.custom_minimum_size = Vector2(200, 60)
-            list_container.add_child(btn)
+            living.append(m)
+    hud.set_monsters(living)
+    for m in living:
+        _watch(m)
 
-            # PERBAIKAN: Gunakan .bind(m) daripada lambda func():
-            # Ini lebih aman karena bind() menangani referensi dengan lebih baik
-            btn.pressed.connect(_on_monster_button_pressed.bind(m))
 
-            # OTOMATIS: Hapus tombol jika monster hilang dari map.
-            # Daftar ini dibangun ulang tiap spawn, jadi koneksi percobaan sebelumnya
-            # dilepas dulu — kalau tidak, Godot menolak connect yang sama dan ERROR.
-            for conn in m.tree_exiting.get_connections():
-                m.tree_exiting.disconnect(conn.callable)
-            m.tree_exiting.connect(_on_monster_exiting.bind(btn, m))
+# Tanda "sudah dipantau" ditempel di monster itu sendiri, bukan di kamus
+# milik shell. Instance ID Godot dipakai ulang setelah node dibuang, dan
+# dictionary yang keyed by id bisa lupa menghapusnya — hasilnya connect kedua
+# atas (method + bind) yang sama ditolak Godot.
+func _watch(monster: Node) -> void:
+    if monster.has_meta("digaji"):
+        return
+    monster.set_meta("digaji", true)
+    monster.tree_exiting.connect(_on_monster_exiting.bind(monster))
 
-# Tambahkan dua fungsi pembantu ini di bawah refresh_monster_buttons:
 
-func _on_monster_button_pressed(m):
-    # Cek validitas monster tepat saat tombol ditekan
-    if is_instance_valid(m) and not m.get("is_dead"):
-        player.go_to_monster(m)
-    else:
-        # Jika monster sudah mati duluan, refresh daftar tombolnya
-        refresh_monster_buttons()
-
-func _on_monster_exiting(btn_to_remove, monster):
-    # Hapus tombol hanya jika tombolnya masih ada
-    if is_instance_valid(btn_to_remove):
-        btn_to_remove.queue_free()
+func _on_monster_exiting(monster: Node) -> void:
     # Bayaran hanya untuk monster yang benar-benar mati. Monster yang dibuang
     # saat pindah peta masih hidup (hp > 0) dan tidak boleh menghasilkan koin.
     if is_instance_valid(monster) and monster.get("hp") <= 0:
+        kills += 1
+        hud.set_kills(kills)
         add_coins(KILL_REWARD)
+    refresh_monster_buttons()
+
+
+func _on_hud_target_pressed(m) -> void:
+    if is_instance_valid(m) and not m.get("is_dead"):
+        player.go_to_monster(m)
+    else:
+        refresh_monster_buttons()

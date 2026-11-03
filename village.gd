@@ -16,6 +16,12 @@ func _ready() -> void:
 func get_map_id() -> StringName:
     return MAP_ID
 
+func get_map_label() -> String:
+    return "Desa"
+
+func get_map_icon() -> String:
+    return "map_village"
+
 func get_grid_layer() -> TileMapLayer:
     return grid_layer
 

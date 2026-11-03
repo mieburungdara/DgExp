@@ -86,6 +86,12 @@ func _portal_cell() -> Vector2i:
 func get_map_id() -> StringName:
     return MAP_ID
 
+func get_map_label() -> String:
+    return "Dungeon"
+
+func get_map_icon() -> String:
+    return "map_dungeon"
+
 func get_grid_layer() -> TileMapLayer:
     return tile_map_layer
 

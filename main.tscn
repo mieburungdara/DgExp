@@ -2,7 +2,8 @@
 
 [ext_resource type="Script" uid="uid://oy6vssk4isw7" path="res://main.gd" id="1_1bvp3"]
 [ext_resource type="PackedScene" uid="uid://cia1sq31j2dkd" path="res://Player.tscn.tscn" id="2_h2yge"]
-[ext_resource type="Script" path="res://shop.gd" id="4_shop"]
+[ext_resource type="Script" path="res://hud.gd" id="4_hud"]
+[ext_resource type="Script" path="res://shop.gd" id="5_shop"]
 
 [node name="Game" type="Node2D"]
 script = ExtResource("1_1bvp3")
@@ -13,30 +14,8 @@ script = ExtResource("1_1bvp3")
 zoom = Vector2(3, 3)
 position_smoothing_enabled = true
 
-[node name="CanvasLayer" type="CanvasLayer" parent="."]
-
-[node name="BtnGrind" type="Button" parent="CanvasLayer"]
-offset_left = 13.0
-offset_top = 851.0
-offset_right = 123.0
-offset_bottom = 904.0
-theme_override_font_sizes/font_size = 32
-text = "GRIND"
-
-[node name="MonsterList" type="VBoxContainer" parent="CanvasLayer"]
-offset_left = 130.0
-offset_top = 836.0
-offset_right = 716.0
-offset_bottom = 1265.0
-theme_override_constants/separation = 10
-
-[node name="CoinsLabel" type="Label" parent="CanvasLayer"]
-offset_left = 13.0
-offset_top = 790.0
-offset_right = 300.0
-offset_bottom = 828.0
-theme_override_font_sizes/font_size = 28
-text = "Koin: 0"
+[node name="HUD" type="CanvasLayer" parent="."]
+script = ExtResource("4_hud")
 
 [node name="SpawnTimer" type="Timer" parent="."]
 wait_time = 2.0
@@ -44,6 +23,4 @@ autostart = true
 
 [node name="Shop" type="CanvasLayer" parent="."]
 visible = false
-script = ExtResource("4_shop")
-
-[connection signal="pressed" from="CanvasLayer/BtnGrind" to="." method="_on_btn_grind_pressed"]
+script = ExtResource("5_shop")

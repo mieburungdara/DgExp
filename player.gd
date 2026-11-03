@@ -1,6 +1,7 @@
 extends CharacterBody2D
 
 signal map_changed
+signal hp_changed(hp: int, max_hp: int)
 
 # --- STATISTIK PLAYER ---
 @export var speed: float = 200.0
@@ -30,6 +31,7 @@ var _clearance := Vector2(6, 6)
 
 func _ready():
     hp_bar.setup(hp)  # Panggil fungsi setup saat mulai
+    hp_changed.emit(hp, max_hp)
 
     # Margin jalur diambil dari bentuk tabrakan itu sendiri (setengah ukuran +
     # offsetnya), jadi grid tidak bisa diam-diam berbeda dari badan karakter.
@@ -217,6 +219,7 @@ func take_damage(amount):
     hp -= amount
     if hp_bar:  # Pastikan variabel hp_bar terhubung
         hp_bar.update_hp(hp)
+    hp_changed.emit(hp, max_hp)
     print("HP Player: ", hp)
 
     if hp <= 0:
