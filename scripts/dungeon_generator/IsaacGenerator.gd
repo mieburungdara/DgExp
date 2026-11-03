@@ -105,10 +105,9 @@ func generate_dungeon():
     rebake_navmesh()
 
     # 4. SPAWN OBJECTS (Boss, Portal, Enemy)
-    # Hapus object lama (Hanya hapus yang BUKAN TileMapLayer)
-    for child in get_children():
-        if child != tile_map_layer:
-            child.queue_free()
+    # Hapus object lama, TAPI jangan sentuh NavigationRegion2D: TileMapLayer adalah
+    # cucunya, jadi perbandingan langsung dengan tile_map_layer tidak akan pernah cocok.
+    _free_generated_children()
         
     if level_data:
         spawn_objects()
@@ -408,8 +407,13 @@ func get_room_center_world(grid_pos: Vector2i) -> Vector2:
 func clear_map():
     if tile_map_layer:
         tile_map_layer.clear()
-    
+
     # Clear spawned objects (children) tapi jangan hapus TileMapLayer-nya sendiri
+    _free_generated_children()
+
+# Hanya buang anak yang bukan bagian dari subtree peta (NavigationRegion2D/TileMapLayer).
+func _free_generated_children() -> void:
     for child in get_children():
-        if child != tile_map_layer:
-            child.queue_free()
+        if child == tile_map_layer or child.is_ancestor_of(tile_map_layer):
+            continue
+        child.queue_free()
