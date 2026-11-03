@@ -4,7 +4,8 @@ signal map_changed
 
 # --- STATISTIK PLAYER ---
 @export var speed: float = 200.0
-@export var hp: int = 100  # Dipastikan mulai dengan angka 100
+@export var max_hp: int = 100  # Atap HP; hp boleh diturunkan, pulih hanya lewat pedagang
+@export var hp: int = 100
 @export var attack_damage: int = 10
 @export var turn_lookahead: float = 12.0  # px titik lihat di sepanjang jalur; makin besar makin lebar lengkung belokan
 @export var max_turn_deg_per_sec: float = 540.0  # berapa cepat karakter boleh ganti arah; membatasi sentakan di sudut tajam

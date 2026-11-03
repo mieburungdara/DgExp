@@ -10,6 +10,7 @@ const MAP_SCENES := {
     &"village": "res://village.tscn",
 }
 const SEED_MONSTER_COUNT := 3
+const KILL_REWARD := 10 # koin per monster yang mati
 
 @export var slime_scene: PackedScene = preload("res://slime.tscn")
 @export var min_spawn_distance: float = 250.0 # jarak minimum titik spawn dari player (px)
@@ -18,9 +19,14 @@ const SEED_MONSTER_COUNT := 3
 @onready var player: CharacterBody2D = $Player
 @onready var list_container: VBoxContainer = $CanvasLayer/MonsterList
 @onready var spawn_timer: Timer = $SpawnTimer
+@onready var coins_label: Label = $CanvasLayer/CoinsLabel
+@onready var shop: CanvasLayer = $Shop
+
+signal coins_changed(new_coins: int)
 
 var current_map: Node
 var warp_lock := 0.0
+var coins := 0 # tidak ikut terbuang saat scene peta berganti
 var _saved_monsters: Dictionary = {}  # map_id -> Array[Dictionary{pos, hp}]
 var _saved_positions: Dictionary = {} # map_id -> Vector2
 
@@ -28,6 +34,25 @@ var _saved_positions: Dictionary = {} # map_id -> Vector2
 func _ready() -> void:
     spawn_timer.timeout.connect(_on_spawn_timer_timeout)
     player.map_changed.connect(refresh_monster_buttons)
+    coins_changed.connect(_on_coins_changed)
+    _on_coins_changed(coins)
+
+
+func add_coins(amount: int) -> void:
+    coins += amount
+    coins_changed.emit(coins)
+
+
+func spend_coins(amount: int) -> void:
+    add_coins(-amount)
+
+
+func _on_coins_changed(value: int) -> void:
+    coins_label.text = "Koin: %d" % value
+
+
+func open_shop() -> void:
+    shop.open()
 
 
 func _process(delta: float) -> void:
@@ -43,6 +68,8 @@ func on_map_ready(map: Node) -> void:
     player.enter_map(map, pos)
     _restore_monsters(id)
     refresh_monster_buttons()
+    # Peta lama sudah dibuang, jadi panel toko tidak boleh tertinggal terbuka.
+    shop.close()
 
 
 func warp_to(id: StringName) -> void:
@@ -158,7 +185,7 @@ func refresh_monster_buttons():
             # dilepas dulu — kalau tidak, Godot menolak connect yang sama dan ERROR.
             for conn in m.tree_exiting.get_connections():
                 m.tree_exiting.disconnect(conn.callable)
-            m.tree_exiting.connect(_on_monster_exiting.bind(btn))
+            m.tree_exiting.connect(_on_monster_exiting.bind(btn, m))
 
 # Tambahkan dua fungsi pembantu ini di bawah refresh_monster_buttons:
 
@@ -170,7 +197,11 @@ func _on_monster_button_pressed(m):
         # Jika monster sudah mati duluan, refresh daftar tombolnya
         refresh_monster_buttons()
 
-func _on_monster_exiting(btn_to_remove):
+func _on_monster_exiting(btn_to_remove, monster):
     # Hapus tombol hanya jika tombolnya masih ada
     if is_instance_valid(btn_to_remove):
         btn_to_remove.queue_free()
+    # Bayaran hanya untuk monster yang benar-benar mati. Monster yang dibuang
+    # saat pindah peta masih hidup (hp > 0) dan tidak boleh menghasilkan koin.
+    if is_instance_valid(monster) and monster.get("hp") <= 0:
+        add_coins(KILL_REWARD)

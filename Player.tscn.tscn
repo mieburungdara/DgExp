@@ -165,7 +165,7 @@ animations = [{
 [sub_resource type="CircleShape2D" id="CircleShape2D_rtr35"]
 radius = 5.0
 
-[node name="Player" type="CharacterBody2D"]
+[node name="Player" type="CharacterBody2D" groups=["player"]]
 z_index = 10
 safe_margin = 2.692
 script = ExtResource("1_jukry")

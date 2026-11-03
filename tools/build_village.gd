@@ -624,6 +624,16 @@ func add_people(root: Node, objects: TileMapLayer) -> void:
         npc.owner = root
         placed += 1
     print("warga+hewan terpasang: ", placed, " dari ", spots.size())
+    _add_shop_trigger(root, objects)
+
+# Pemicu toko persis di lapak tempat pedagang berdiri.
+func _add_shop_trigger(root: Node, objects: TileMapLayer) -> void:
+    var trigger := Area2D.new()
+    trigger.name = "ShopTrigger"
+    trigger.set_script(load("res://shop_trigger.gd"))
+    root.add_child(trigger)
+    trigger.owner = root
+    trigger.global_position = objects.to_global(objects.map_to_local(Vector2i(17, 12)))
 
 # Cincin membesar: cari sel terbuka terdekat dari titik yang diinginkan, jadi
 # perpindahan prop tidak membuat NPC hilang diam-diam.
