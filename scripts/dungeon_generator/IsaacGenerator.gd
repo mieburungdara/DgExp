@@ -54,6 +54,12 @@ const SUBDIV := 2
 # --- DATA ---
 var room_grid: Dictionary = {} # (Vector2i) -> bool. Menyimpan posisi LOGIS (0,0), (1,0) dsb.
 
+# TileMapLayer didaftarkan lewat group supaya karakter bisa membangun grid jalurnya
+# tanpa perlu jalur node yang di-hardcode.
+func _ready() -> void:
+    if tile_map_layer:
+        tile_map_layer.add_to_group("dungeon_grid")
+
 func generate_dungeon():
     if not tile_map_layer:
         print("Error: TileMapLayer belum di-assign!")

@@ -10,20 +10,32 @@ extends CharacterBody2D
 # --- VARIABEL KONTROL ---
 var target_monster = null
 var is_attacking: bool = false
-var _replan_nudge := 0.0
 var _heading := Vector2.RIGHT
+var _grid := GridPath.new()
+var _path := PackedVector2Array()
+var _path_idx := 0
+var _planned_for := Vector2.INF
+var _replan_in := 0.0
 
 # --- HUBUNGAN KE NODE ---
-@onready var nav_agent = $NavigationAgent2D
 @onready var anim = $AnimatedSprite2D
 @onready var hp_bar = $FloatingHealthBar
+@onready var _collision: CollisionShape2D = $CollisionShape2D
 
 
 func _ready():
     hp_bar.setup(hp)  # Panggil fungsi setup saat mulai
 
+    var layer := get_tree().get_first_node_in_group("dungeon_grid") as TileMapLayer
+    if layer == null:
+        push_error("Player: TileMapLayer ber-group 'dungeon_grid' tidak ditemukan, pathfinding tidak aktif.")
+        return
+    # Margin jalur diambil dari bentuk tabrakan itu sendiri (setengah ukuran +
+    # offsetnya), jadi grid tidak bisa diam-diam berbeda dari badan karakter.
+    _grid.build(layer, _collision.shape.get_rect().size * 0.5 + _collision.position.abs())
 
-func _physics_process(_delta):
+
+func _physics_process(delta):
     if hp <= 0 or is_attacking:
         return
 
@@ -33,35 +45,36 @@ func _physics_process(_delta):
         target_monster = null
         return
 
-    # Target harus titik yang ada di navmesh. NavigationAgent hanya menghitung ulang
-    # jalur saat nilainya berubah, jadi kalau jalur selesai padahal monster masih jauh
-    # (misal karakter tersorong keluar jalur), geser target sedikit untuk memicu replan.
-    var goal := _navmesh_target(target_monster.global_position)
-    if nav_agent.is_navigation_finished() and global_position.distance_to(goal) > 40.0:
-        _replan_nudge = 0.0 if _replan_nudge > 0.0 else 0.5
-    nav_agent.target_position = goal + Vector2(_replan_nudge, 0.0)
+    var goal: Vector2 = target_monster.global_position
 
-    var distance_to_monster = global_position.distance_to(target_monster.global_position)
-
-    # Jarak serang (50 pixel). Jika monster menjauh lebih dari ini, Player akan mengejar lagi.
-    if distance_to_monster <= 20.0:
+    # Jarak serang 20 pixel. Jika monster menjauh lebih dari ini, Player mengejar lagi.
+    if global_position.distance_to(goal) <= 20.0:
         velocity = Vector2.ZERO
         start_attack_loop()
         return
 
-    # Logika berjalan menuju posisi terbaru monster
-    if not nav_agent.is_navigation_finished():
-        var direction = _limit_turn(global_position.direction_to(_lookahead_point()))
+    _replan_in -= delta
+    if _needs_replan(goal):
+        _path = _grid.find_path(global_position, goal)
+        _path_idx = 0
+        _planned_for = goal
+        _replan_in = 0.3
 
-        velocity = direction * speed
-        move_and_slide()
-
-        play_animation("walk")
-        if direction.x != 0:
-            anim.flip_h = direction.x < 0
-    else:
+    if _path.is_empty() or _path_idx >= _path.size():
         velocity = Vector2.ZERO
         play_animation("idle")
+        return
+
+    while _path_idx < _path.size() - 1 and global_position.distance_to(_path[_path_idx]) < 12.0:
+        _path_idx += 1
+
+    var direction := _limit_turn(global_position.direction_to(_lookahead_point()))
+    velocity = direction * speed
+    move_and_slide()
+
+    play_animation("walk")
+    if direction.x != 0:
+        anim.flip_h = direction.x < 0
 
 
 # Membatasi kecepatan ganti arah supaya sudut tajam dilewati sebagai lengkungan,
@@ -78,33 +91,46 @@ func _limit_turn(desired: Vector2) -> Vector2:
     return _heading
 
 
-# Titik sejauh turn_lookahead px di depan, diukur sepanjang jalur, TAPI hanya selama
-# garis lurus dari karakter ke titik itu benar-benar bebas dinding. Tanpa pemeriksaan
-# ini, memotong sudut justru mengarahkan karakter ke sisi dinding dan ia tertahan di situ.
+# Pencarian jalur itu mahal (terukur ~25 ms rata-rata, ~75 ms terburuk pada peta
+# 340x420 ubin), jadi tidak boleh tiap tick: hanya saat tujuan berpindah jauh,
+# karakter menyimpang dari segmen berjalan, atau jalur habis.
+func _needs_replan(goal: Vector2) -> bool:
+    if _path.is_empty():
+        return goal.distance_to(_planned_for) > 8.0
+    if _replan_in > 0.0:
+        return false
+    if goal.distance_to(_planned_for) > 32.0:
+        return true
+    return _distance_to_current_leg() > 24.0
+
+
+func _distance_to_current_leg() -> float:
+    var a: Vector2 = _path[clampi(_path_idx, 0, _path.size() - 1)]
+    var b: Vector2 = _path[min(_path_idx + 1, _path.size() - 1)]
+    var seg: Vector2 = b - a
+    var len2 := seg.length_squared()
+    if len2 <= 0.001:
+        return global_position.distance_to(a)
+    var t := clampf((global_position - a).dot(seg) / len2, 0.0, 1.0)
+    return global_position.distance_to(a + seg * t)
+
+
 # Titik sejauh turn_lookahead px di depan, diukur sepanjang jalur. Karena titik ini
 # sudah "melihat" ke segmen sesudah sudut, belokan berubah menjadi lengkung alih-alih
 # patahan tepat di titik sudut jalur.
 func _lookahead_point() -> Vector2:
-    var path: PackedVector2Array = nav_agent.get_current_navigation_path()
-    var idx: int = nav_agent.get_current_navigation_path_index()
-    if path.is_empty() or idx >= path.size():
-        return nav_agent.target_position
     var cursor := global_position
     var remaining := turn_lookahead
-    for i in range(idx, path.size()):
-        var seg: Vector2 = path[i] - cursor
+    for i in range(_path_idx, _path.size()):
+        var seg: Vector2 = _path[i] - cursor
         var seg_len := seg.length()
         if seg_len <= 0.001:
             continue
         if seg_len >= remaining:
             return cursor + seg * (remaining / seg_len)
         remaining -= seg_len
-        cursor = path[i]
+        cursor = _path[i]
     return cursor
-
-
-func _navmesh_target(point: Vector2) -> Vector2:
-    return NavigationServer2D.map_get_closest_point(get_world_2d().navigation_map, point)
 
 
 # --- FUNGSI PERINTAH ---
@@ -112,6 +138,9 @@ func go_to_monster(monster_node):
     if is_instance_valid(monster_node):
         target_monster = monster_node
         is_attacking = false
+        _path = PackedVector2Array()
+        _planned_for = Vector2.INF
+        _replan_in = 0.0
 
 
 # --- LOOP SERANGAN OTOMATIS ---
