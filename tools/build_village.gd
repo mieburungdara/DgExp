@@ -541,6 +541,7 @@ func build_scene(ts: TileSet) -> PackedScene:
     points.owner = root
 
     add_lights(root, objects)
+    add_people(root, objects)
 
     root.set("grid_layer", objects)
     root.set("spawn_points", points)
@@ -568,6 +569,74 @@ func add_portal(root: Node, objects: TileMapLayer) -> void:
     root.add_child(portal)
     portal.owner = root
     portal.global_position = objects.to_global(objects.map_to_local(portal_cell))
+
+# Warga dan hewan. Titiknya dipilih tangan lalu divalidasi: sel yang tertutup
+# air/tembok dilewati, jadi perubahan layout tidak bisa menaruh NPC di dalam
+# dinding.
+func add_people(root: Node, objects: TileMapLayer) -> void:
+    var spots := [
+        ["merchant", Vector2i(17, 11), 0.0],
+        ["farmer", Vector2i(8, 13), 40.0],
+        ["woman", Vector2i(20, 12), 44.0],
+        ["child", Vector2i(24, 18), 36.0],
+        ["elder", Vector2i(22, 18), 32.0],
+        ["guard", Vector2i(18, 18), 56.0],
+        ["man", Vector2i(30, 20), 48.0],
+        ["woman2", Vector2i(13, 13), 40.0],
+        ["hen", Vector2i(35, 26), 20.0],
+        ["rooster", Vector2i(36, 25), 20.0],
+        ["duck", Vector2i(31, 10), 18.0],
+        ["goose", Vector2i(30, 10), 18.0],
+        ["goat", Vector2i(34, 25), 22.0],
+        ["sheep", Vector2i(37, 26), 22.0],
+        ["dog", Vector2i(6, 20), 52.0],
+        ["cat", Vector2i(28, 13), 44.0],
+    ]
+    var placed := 0
+    for spec in spots:
+        var name: String = spec[0]
+        var cell: Vector2i = spec[1]
+        var radius: float = spec[2]
+        var spot := _find_open_near(cell, 4)
+        if spot == Vector2i(-1, -1):
+            print("  lewat: ", name, " tidak ada sel terbuka di sekitar ", cell)
+            continue
+        if spot != cell:
+            print("  digeser: ", name, " dari ", cell, " ke ", spot)
+        cell = spot
+        # Hewan kecil digambar setengah ukuran: 24 px di grid 16 px terlalu besar
+        # untuk ayam, dan texture_scale tidak memengaruhi bentuk tabrakan.
+        var is_animal := name in ["hen", "rooster", "duck", "goose", "goat", "sheep", "dog", "cat"]
+        var npc_scale := Vector2(0.7, 0.7) if is_animal else Vector2.ONE
+        var npc := CharacterBody2D.new()
+        npc.name = name.capitalize()
+        npc.set_script(load("res://villager.gd"))
+        npc.set("texture_path", "res://art/people/%s.png" % name)
+        npc.set("wander_radius", radius)
+        npc.set("speed", 15.0 if is_animal else 26.0)
+        npc.scale = npc_scale
+        # Urutan penting: posisi dulu (node belum di tree, jadi global == lokal),
+        # baru add_child supaya _ready() merekam rumah yang benar, lalu owner —
+        # owner yang di-set sebelum add_child ditolak Godot dan node-nya hilang
+        # saat PackedScene.pack().
+        npc.position = objects.to_global(objects.map_to_local(cell))
+        root.add_child(npc)
+        npc.owner = root
+        placed += 1
+    print("warga+hewan terpasang: ", placed, " dari ", spots.size())
+
+# Cincin membesar: cari sel terbuka terdekat dari titik yang diinginkan, jadi
+# perpindahan prop tidak membuat NPC hilang diam-diam.
+func _find_open_near(from_cell: Vector2i, reach: int) -> Vector2i:
+    for radius in range(0, reach + 1):
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                if max(absi(dx), absi(dy)) != radius:
+                    continue
+                var c := from_cell + Vector2i(dx, dy)
+                if _in(c.x, c.y) and _open(c.x, c.y):
+                    return c
+    return Vector2i(-1, -1)
 
 # Cahaya hangat di lampu jalan, dua lapak, dan sumur.
 func add_lights(root: Node, objects: TileMapLayer) -> void:
