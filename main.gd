@@ -29,6 +29,7 @@ var coins := 0 # tidak ikut terbuang saat scene peta berganti
 var kills := 0
 var _saved_monsters: Dictionary = {}  # map_id -> Array[Dictionary{pos, hp}]
 var _saved_positions: Dictionary = {} # map_id -> Vector2
+var _grids: Dictionary = {}           # map_id -> GridPath yang sudah dipindai
 
 
 func _ready() -> void:
@@ -74,11 +75,24 @@ func on_map_ready(map: Node) -> void:
     hud.set_map(String(map.call("get_map_label")), String(map.call("get_map_icon")))
     var id: StringName = map.call("get_map_id")
     var pos: Vector2 = _saved_positions.get(id, map.call("get_arrival_point"))
-    player.enter_map(map, pos)
+    # Posisi terakhir hampir selalu "tepat di atas gerbang yang baru dipakai".
+    # Kalau dipulangkan ke sana, gerbangnya jadi tidak bisa dipakai lagi, jadi
+    # pakai titik datang peta itu.
+    if _lands_on_gate(map, pos):
+        pos = map.call("get_arrival_point")
+    player.enter_map(map, pos, _grids.get(id))
+    _grids[id] = player.get_grid()
     _restore_monsters(id)
     _on_targets_changed()
     # Peta lama sudah dibuang, jadi panel toko tidak boleh tertinggal terbuka.
     shop.close_panel()
+
+
+func _lands_on_gate(map: Node, pos: Vector2) -> bool:
+    for c in map.get_children():
+        if c.has_method("covers") and c.call("covers", pos):
+            return true
+    return false
 
 
 func warp_to(id: StringName) -> void:

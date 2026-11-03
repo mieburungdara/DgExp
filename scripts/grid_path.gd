@@ -34,8 +34,24 @@ var _buckets: Array[PackedInt32Array] = []
 var _touched: Array[int] = []
 var _min_bucket := 0
 
+# Sidik jari peta yang sudah dipindai, supaya warp bisa memakai ulang hasilnya.
+# Sengaja TIDAK dibandingkan dengan layer lama: scene peta dibuang saat warp,
+# jadi layer lama sudah terhapus dan perbandingan itu akan selalu gagal.
+const _SAMPLE := 64
+var _fp_rect := Rect2i()
+var _fp_pos := Vector2.ZERO
+var _fp_samples := PackedInt32Array()
+var _fp_texture: Texture2D
+var _fp_region := Vector2i.ZERO
+var _fp_tiles := 0
+var _fp_tile_size := Vector2i(16, 16)
+var _fp_valid := false
+
 
 func build(layer: TileMapLayer, clearance: Vector2) -> void:
+    if reuse(layer, clearance):
+        return
+    _fp_valid = false
     _layer = layer
     _clearance = clearance
     _walk = PackedByteArray()
@@ -46,6 +62,7 @@ func build(layer: TileMapLayer, clearance: Vector2) -> void:
     var step_x: Vector2 = _layer.map_to_local(Vector2i(1, 0)) - _layer.map_to_local(Vector2i(0, 0))
     var step_y: Vector2 = _layer.map_to_local(Vector2i(0, 1)) - _layer.map_to_local(Vector2i(0, 0))
     _tile_size = Vector2(step_x.x, step_y.y)
+    _fp_tile_size = Vector2i(int(step_x.x), int(step_y.y))
     _origin = _layer.map_to_local(Vector2i(0, 0)) - _tile_size * 0.5
 
     var used: Rect2i = _layer.get_used_rect()
@@ -85,6 +102,77 @@ func build(layer: TileMapLayer, clearance: Vector2) -> void:
         var i := _index(cell)
         if _body_clear(_layer.to_global(_cell_center(cell))):
             _walk[i] = 1
+
+    _remember_fingerprint()
+
+
+## Menukar layer tanpa memindai ulang kalau isinya sama. Yang dibandingkan
+## adalah sidik jari hasil build: rect terpakai, posisi layer, tileset (lewat
+## tekstur + region + jumlah tile, karena tileset dungeon adalah sub-resource
+## di dalam scene sehingga objeknya baru setiap instantiate), dan 64 sel sampel
+## yang diambil merata di sepanjang rect — bukan 64 sel pertama, supaya
+## perubahan di sudut peta tetap terdeteksi.
+func reuse(layer: TileMapLayer, clearance: Vector2) -> bool:
+    if layer == null or not _fp_valid or _walk.size() == 0:
+        return false
+    if _clearance != clearance:
+        return false
+    if layer.global_position != _fp_pos:
+        return false
+    if layer.get_used_rect() != _fp_rect:
+        return false
+    if not _same_tileset(layer.tile_set):
+        return false
+    if _sample_of(layer) != _fp_samples:
+        return false
+    _layer = layer
+    return true
+
+
+func _remember_fingerprint() -> void:
+    if _layer == null or _layer.tile_set == null:
+        return
+    _fp_rect = _layer.get_used_rect()
+    _fp_pos = _layer.global_position
+    _fp_samples = _sample_of(_layer)
+    var ts := _layer.tile_set
+    if ts.get_source_count() < 1:
+        return
+    var src := ts.get_source(ts.get_source_id(0)) as TileSetAtlasSource
+    if src == null:
+        return
+    _fp_texture = src.texture
+    _fp_region = src.texture_region_size
+    _fp_tiles = src.get_tiles_count()
+    _fp_valid = _fp_texture != null and _fp_samples.size() > 0
+
+
+func _sample_of(layer: TileMapLayer) -> PackedInt32Array:
+    var out := PackedInt32Array()
+    var total := maxi(_fp_rect.size.x * _fp_rect.size.y, 1)
+    var stride: int = maxi(1, int(total / _SAMPLE))
+    var i := 0
+    while i < total:
+        var c := Vector2i(_fp_rect.position.x + int(i / _fp_rect.size.y),
+            _fp_rect.position.y + (i % _fp_rect.size.y))
+        out.append(layer.get_cell_source_id(c))
+        var a := layer.get_cell_atlas_coords(c)
+        out.append(a.x)
+        out.append(a.y)
+        i += stride
+    return out
+
+
+func _same_tileset(ts: TileSet) -> bool:
+    if ts == null or _fp_texture == null:
+        return false
+    if ts.tile_size != _fp_tile_size or ts.get_source_count() != 1:
+        return false
+    var src := ts.get_source(ts.get_source_id(0)) as TileSetAtlasSource
+    if src == null:
+        return false
+    return src.texture == _fp_texture and src.texture_region_size == _fp_region \
+        and src.get_tiles_count() == _fp_tiles
 
 
 func is_ready() -> bool:

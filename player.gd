@@ -40,17 +40,27 @@ func _ready():
 
 # Shell (Game) memanggil ini setiap kali scene peta baru siap, jadi player tidak
 # perlu mencari peta sendiri di tree.
-func enter_map(map: Node, pos: Vector2) -> void:
+## Grid bisa dibawa dari cache shell (peta ini pernah dipindai) atau dibangun
+## di sini untuk kunjungan pertama; hasilnya diambil shell lewat get_grid().
+func enter_map(map: Node, pos: Vector2, cached: GridPath = null) -> void:
     global_position = pos
     velocity = Vector2.ZERO
     target_monster = null
     _active_map = map
-    _grid.build(map.call("get_grid_layer"), _clearance)
+    if cached != null and cached.reuse(map.call("get_grid_layer"), _clearance):
+        _grid = cached
+    else:
+        _grid = GridPath.new()
+        _grid.build(map.call("get_grid_layer"), _clearance)
     _path = PackedVector2Array()
     _path_idx = 0
     _planned_for = Vector2.INF
     _replan_in = 0.0
     map_changed.emit()
+
+
+func get_grid() -> GridPath:
+    return _grid
 
 
 func get_active_map() -> Node:

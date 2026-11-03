@@ -12,6 +12,7 @@ func _ready() -> void:
     monitorable = false
 
     var shape := CollisionShape2D.new()
+    shape.name = "CollisionShape2D"
     var rect := RectangleShape2D.new()
     rect.size = Vector2(30, 26)
     shape.shape = rect
