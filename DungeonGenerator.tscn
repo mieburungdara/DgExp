@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://cu4e7xyr6853" path="res://scripts/dungeon_generator/IsaacGenerator.gd" id="1_dfu8u"]
 [ext_resource type="Resource" uid="uid://ja1rdnyl81q3" path="res://dungeon_5.tres" id="2_dfu8u"]
-[ext_resource type="Texture2D" uid="uid://cd73ksbjftqqd" path="res://scripts/dungeon_generator/dungeon.png" id="3_ks5ye"]
+[ext_resource type="Texture2D" path="res://scripts/dungeon_generator/dungeon_v2.png" id="3_ks5ye"]
 
 [sub_resource type="NavigationPolygon" id="NavigationPolygon_jyhfs"]
 vertices = PackedVector2Array(8, 8, -8, 8, -8, -8, 8, -8)
