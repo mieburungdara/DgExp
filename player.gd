@@ -75,7 +75,11 @@ func _physics_process(delta):
     if hp <= 0 or is_attacking:
         return
 
-    if target_monster == null or not is_instance_valid(target_monster):
+    # Monster yang sudah mati masih punya node (animasi mati), jadi is_dead
+    # harus dicek: tanpa ini HUD menampilkan "HP -9969" dan player terus
+    # mengejar bangkai sampai warp selesai.
+    if target_monster == null or not is_instance_valid(target_monster) \
+            or bool(target_monster.get("is_dead")):
         play_animation("idle")
         velocity = Vector2.ZERO
         target_monster = null

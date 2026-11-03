@@ -56,8 +56,15 @@ func _on_coins_changed(value: int) -> void:
     hud.set_coins(value)
 
 
+var _last_hp := 0
+
+
 func _on_player_hp_changed(value: int, maximum: int) -> void:
     hud.set_hp(value, maximum)
+    # Kedip hanya saat berkurang, bukan saat pedagang memulihkan HP.
+    if value < _last_hp:
+        hud.flash_damage()
+    _last_hp = value
 
 
 func open_shop() -> void:
@@ -86,6 +93,7 @@ func on_map_ready(map: Node) -> void:
     _on_targets_changed()
     # Peta lama sudah dibuang, jadi panel toko tidak boleh tertinggal terbuka.
     shop.close_panel()
+    hud.fade_in()
 
 
 func _lands_on_gate(map: Node, pos: Vector2) -> bool:
@@ -97,6 +105,16 @@ func _lands_on_gate(map: Node, pos: Vector2) -> bool:
 
 func warp_to(id: StringName) -> void:
     if warp_lock > 0.0 or not MAP_SCENES.has(id) or not is_instance_valid(current_map):
+        return
+    # Layar menggelap dulu, baru scene ditukar: tanpa ini perpindahan terasa
+    # seperti melompat ke dunia lain di tengah satu frame.
+    hud.fade_out()
+    var timer := get_tree().create_timer(0.18)
+    timer.timeout.connect(_do_warp.bind(id))
+
+
+func _do_warp(id: StringName) -> void:
+    if not is_instance_valid(current_map):
         return
     var from: StringName = current_map.call("get_map_id")
     _saved_positions[from] = player.global_position
@@ -241,4 +259,5 @@ func _on_monster_exiting(monster: Node) -> void:
         kills += 1
         hud.set_kills(kills)
         add_coins(KILL_REWARD)
+        hud.toast("+%d koin" % KILL_REWARD, (monster as Node2D).global_position)
     _on_targets_changed()

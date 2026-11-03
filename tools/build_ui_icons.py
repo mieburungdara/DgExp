@@ -148,6 +148,19 @@ def target():
     return img
 
 
+def arrow():
+    """Petunjuk kompas: harus asimetris dan menghadap UP.
+
+    Ikon target berupa lingkaran sepusat, jadi diputar pun tampak tidak
+    berubah. Panah menghadap atas membuat rotasi HUD terbaca mata.
+    """
+    img = canvas()
+    d = ImageDraw.Draw(img)
+    d.rectangle((6, 7, 10, 15), fill=GOLD_DARK)
+    d.polygon([(8, 1), (14, 9), (8, 6), (2, 9)], fill=GOLD)
+    return img
+
+
 def close():
     img = canvas()
     d = ImageDraw.Draw(img)
@@ -169,6 +182,7 @@ def build():
         "map_dungeon": maptile("dungeon"),
         "map_village": maptile("village"),
         "target": target(),
+        "arrow": arrow(),
         "close": close(),
     }
     z = 6
