@@ -10,6 +10,10 @@ extends Node
 @export var corridor_gap: int = 4 # Jarak lorong antar ruangan (0 = nempel dinding)
 @export var connection_width: int = 2 # Lebar pintu/lorong
 
+@export_group("Spawn Points")
+@export var spawn_point_count: int = 12 # Berapa titik spawn dibuat dari ubin lantai
+@export var spawn_min_spacing: int = 6 # Jarak minimum antar titik spawn, dalam ubin
+
 
 @export_group("Tile Settings")
 @export var tile_map_layer: TileMapLayer
@@ -47,11 +51,19 @@ extends Node
 # --- DATA ---
 var room_grid: Dictionary = {} # (Vector2i) -> bool. Menyimpan posisi LOGIS (0,0), (1,0) dsb.
 
+# Dipakai untuk memeriksa kelayakan ubin spawn. Harus Array[Vector2i] agar hasil
+# penjumlahan tetap bertipe, bukan Variant.
+const _NEIGHBOR_DIRS: Array[Vector2i] = [Vector2i.ZERO, Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]
+
 # TileMapLayer didaftarkan lewat group supaya karakter bisa membangun grid jalurnya
 # tanpa perlu jalur node yang di-hardcode.
 func _ready() -> void:
     if tile_map_layer:
         tile_map_layer.add_to_group("dungeon_grid")
+    # Saat main scene dijalankan, SpawnPoints masih kosong di file. Diisi sekarang
+    # supaya monster punya tempat muncul tanpa harus menekan Generate dulu.
+    if not Engine.is_editor_hint():
+        fill_spawn_points()
 
 func generate_dungeon():
     if not tile_map_layer:
@@ -100,8 +112,10 @@ func generate_dungeon():
     # 2. GAMBAR KE TILEMAP
     draw_map()
 
+    # 3. TITIK SPAWN dari ubin lantai yang baru digambar
+    fill_spawn_points()
 
-    # 3. SPAWN OBJECTS (Boss, Portal, Enemy)
+    # 4. SPAWN OBJECTS (Boss, Portal, Enemy)
     # Hapus object lama, TAPI jangan sentuh NavigationRegion2D: TileMapLayer adalah
     # cucunya, jadi perbandingan langsung dengan tile_map_layer tidak akan pernah cocok.
     _free_generated_children()
@@ -276,3 +290,57 @@ func _free_generated_children() -> void:
         if child == tile_map_layer or child.is_ancestor_of(tile_map_layer):
             continue
         child.queue_free()
+
+
+# SpawnPoints diisi dari ubin lantai supaya monster selalu muncul di tempat yang
+# bisa diinjak, dan titik-titiknya ikut berpindah setiap dungeon digenerate ulang.
+func fill_spawn_points() -> void:
+    var holder := get_node_or_null("NavigationRegion2D/SpawnPoints")
+    if holder == null or tile_map_layer == null:
+        print("Warning: NavigationRegion2D/SpawnPoints tidak ada, titik spawn tidak dibuat.")
+        return
+
+    for old in holder.get_children():
+        holder.remove_child(old)
+        old.free()
+
+    var open_cells: Array[Vector2i] = []
+    for cell in tile_map_layer.get_used_cells():
+        if _is_open_cell(cell):
+            open_cells.append(cell)
+
+    open_cells.shuffle()
+    var chosen: Array[Vector2i] = []
+    for c in open_cells:
+        if chosen.size() >= spawn_point_count:
+            break
+        var far_enough := true
+        for k in chosen:
+            if Vector2(c - k).length() < float(spawn_min_spacing):
+                far_enough = false
+                break
+        if far_enough:
+            chosen.append(c)
+
+    for i in chosen.size():
+        var marker := Marker2D.new()
+        marker.name = "Spawn%d" % (i + 1)
+        holder.add_child(marker)
+        if Engine.is_editor_hint():
+            marker.owner = get_tree().edited_scene_root
+        marker.global_position = tile_map_layer.to_global(tile_map_layer.map_to_local(chosen[i]))
+
+    print("Titik spawn dibuat: %d dari %d ubin layak." % [chosen.size(), open_cells.size()])
+
+
+# Ubin lantai yang tetangga orthogonalnya juga lantai: badan slime (circle radius 8)
+# tidak boleh menumpuk dinding pada saat di-spawn.
+func _is_open_cell(cell: Vector2i) -> bool:
+    for d in _NEIGHBOR_DIRS:
+        var c: Vector2i = cell + d
+        if tile_map_layer.get_cell_source_id(c) == -1:
+            return false
+        var td := tile_map_layer.get_cell_tile_data(c)
+        if td == null or td.get_collision_polygons_count(0) > 0:
+            return false
+    return true

@@ -5,6 +5,7 @@ extends Node2D
 @onready var list_container = $CanvasLayer/MonsterList 
 
 @export var slime_scene: PackedScene = preload("res://slime.tscn")
+@export var min_spawn_distance: float = 250.0 # jarak minimum titik spawn dari player (px)
 
 @onready var spawn_timer = $SpawnTimer
 
@@ -24,24 +25,27 @@ func _on_spawn_timer_timeout():
     randomize_timer()
 
 func spawn_slime():
-    # 1. Pastikan ada titik spawn yang tersedia
-    var points = $NavigationRegion2D/SpawnPoints.get_children()
+    # 1. Titik spawn disediakan DungeonGen dari ubin lantai yang layak
+    var points = $DungeonGen/NavigationRegion2D/SpawnPoints.get_children()
     if points.size() == 0:
-        print("Peringatan: Tidak ada node Marker2D di dalam SpawnPoints!")
+        push_warning("SpawnPoints kosong, tidak ada tempat untuk spawn monster.")
         return
-        
-    # 2. Pilih salah satu Marker2D secara acak
-    var random_marker = points.pick_random()
-    
-    # 3. Buat instance slime baru
+
+    # 2. Ambil yang paling acak tapi tidak terlalu dekat dengan player, supaya
+    #    monster tidak muncul tepat di atas kepala karakter
+    var candidates = []
+    for p in points:
+        if player.global_position.distance_to(p.global_position) >= min_spawn_distance:
+            candidates.append(p)
+    if candidates.is_empty():
+        candidates = points
+    var chosen = candidates.pick_random()
+
+    # 3. Masuk tree dulu, baru pasang posisi global
     var new_slime = slime_scene.instantiate()
-    
-    # 4. Set posisi slime ke posisi Marker yang terpilih
-    new_slime.global_position = random_marker.global_position
-    
-    # 5. Masukkan ke dalam scene
     add_child(new_slime)
-    
+    new_slime.global_position = chosen.global_position
+
     # Update tombol agar monster baru langsung terdaftar
     refresh_monster_buttons()
 
@@ -72,7 +76,11 @@ func refresh_monster_buttons():
             # Ini lebih aman karena bind() menangani referensi dengan lebih baik
             btn.pressed.connect(_on_monster_button_pressed.bind(m))
             
-            # OTOMATIS: Hapus tombol jika monster hilang dari map
+            # OTOMATIS: Hapus tombol jika monster hilang dari map.
+            # Daftar ini dibangun ulang tiap spawn, jadi koneksi percobaan sebelumnya
+            # dilepas dulu — kalau tidak, Godot menolak connect yang sama dan ERROR.
+            for conn in m.tree_exiting.get_connections():
+                m.tree_exiting.disconnect(conn.callable)
             m.tree_exiting.connect(_on_monster_exiting.bind(btn))
 
 # Tambahkan dua fungsi pembantu ini di bawah refresh_monster_buttons:
