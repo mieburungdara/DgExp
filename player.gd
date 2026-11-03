@@ -4,6 +4,7 @@ extends CharacterBody2D
 @export var speed: float = 200.0
 @export var hp: int = 100  # Dipastikan mulai dengan angka 100
 @export var attack_damage: int = 10
+@export var turn_lookahead: float = 24.0  # px titik lihat di sepanjang jalur; makin besar makin lebar lengkung belokan
 
 # --- VARIABEL KONTROL ---
 var target_monster = null
@@ -48,8 +49,7 @@ func _physics_process(_delta):
 
     # Logika berjalan menuju posisi terbaru monster
     if not nav_agent.is_navigation_finished():
-        var next_path_pos = nav_agent.get_next_path_position()
-        var direction = (next_path_pos - global_position).normalized()
+        var direction = global_position.direction_to(_lookahead_point())
 
         velocity = direction * speed
         move_and_slide()
@@ -60,6 +60,28 @@ func _physics_process(_delta):
     else:
         velocity = Vector2.ZERO
         play_animation("idle")
+
+
+# Titik sejauh turn_lookahead px di depan, diukur sepanjang jalur. Karena titik ini
+# sudah "melihat" ke segmen sesudah sudut, belokan berubah menjadi lengkung alih-alih
+# patahan tepat di titik sudut jalur.
+func _lookahead_point() -> Vector2:
+    var path: PackedVector2Array = nav_agent.get_current_navigation_path()
+    var idx: int = nav_agent.get_current_navigation_path_index()
+    if path.is_empty() or idx >= path.size():
+        return nav_agent.target_position
+    var cursor := global_position
+    var remaining := turn_lookahead
+    for i in range(idx, path.size()):
+        var seg: Vector2 = path[i] - cursor
+        var seg_len := seg.length()
+        if seg_len <= 0.001:
+            continue
+        if seg_len >= remaining:
+            return cursor + seg * (remaining / seg_len)
+        remaining -= seg_len
+        cursor = path[i]
+    return cursor
 
 
 func _navmesh_target(point: Vector2) -> Vector2:
