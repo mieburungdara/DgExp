@@ -63,10 +63,23 @@ const SHADOW_PROP := 44
 const EMPTY := 45
 const WATER_BLOCK := 46
 const BRIDGE := 47
+const SAND := 48
+const SHORE_N := 49
+const SHORE_NE := 50
+const SHORE_NW := 51
+const SHORE_S := 52
+const SHORE_SE := 53
+const SHORE_SW := 54
+const SHORE_E := 55
+const SHORE_W := 56
+const SHORE_NS := 57
+const SHORE_EW := 58
 
+# Karakter dump peta; semua ubin tepi air memakai "~" agar legenda tetap pendek.
 const LEGEND := [".", "*", "g", "w", "c", "d", "b", "~", "A", "W", "P", "D", "n", "R", "p",
     "S", "s", "T", "t", "C", "X", "x", "u", "y", "f", "h", "#", "=", "o", "B", "K", "v",
-    "H", "L", "i", "q", "M", "J", "r", "Z", "V", "_", "'", ",", ":", ".", "A", "j"]
+    "H", "L", "i", "q", "M", "J", "r", "Z", "V", "_", "'", ",", ":", ".", "A", "j",
+    "e", "~", "~", "~", "~", "~", "~", "~", "~", "~", "~"]
 
 # Bangunan mendapat bayangan memanjang di sisi kanan-bawah; pohon dan prop cukup
 # satu blob kecil di bawahnya.
@@ -92,6 +105,7 @@ var _solid: Dictionary = {}
 var _rng := RandomNumberGenerator.new()
 var _lanterns: Array[Vector2i] = []
 var _lit_cells: Array[Vector2i] = []
+var _water: Array[int] = []
 
 var portal_cell := Vector2i(19, 16)
 var arrival_cell := Vector2i(20, 16)
@@ -153,6 +167,8 @@ func _initialize() -> void:
     _s.fill(EMPTY)
     _w.resize(W * H)
     _w.fill(EMPTY)
+    _water.resize(W * H)
+    _water.fill(0)
 
     paint()
     dump()
@@ -178,6 +194,7 @@ func paint() -> void:
     paint_pond()
     paint_stream()
     paint_roads()
+    paint_shores()
     paint_houses()
     paint_extras()
     paint_scatter()
@@ -237,8 +254,7 @@ func paint_pond() -> void:
             var wob := 1.0 + 0.28 * float(((x * 7 + y * 13) % 5) - 2) / 2.0
             if dx * dx + dy * dy <= wob * wob:
                 _putg(x, y, DIRT)
-                _putw(x, y, WATER_EDGE if y == 3 else WATER)
-                _puto(x, y, WATER_BLOCK)
+                _mark_water(x, y)
     _puto(27, 5, ROCK)
     _puto(27, 7, FERN)
     _puto(40, 4, ROCK)
@@ -252,10 +268,8 @@ func paint_stream() -> void:
     for x in range(2, 32):
         _putg(x, 25, DIRT)
         _putg(x, 26, DIRT)
-        _putw(x, 25, WATER_EDGE)
-        _putw(x, 26, WATER)
-        _puto(x, 25, WATER_BLOCK)
-        _puto(x, 26, WATER_BLOCK)
+        _mark_water(x, 25)
+        _mark_water(x, 26)
     # Jembatan segaris dengan gang utara-selatan.
     recto(21, 25, 22, 26, BRIDGE)
     rectg(21, 25, 22, 26, DIRT)
@@ -405,6 +419,97 @@ func paint_scatter() -> void:
             elif r < 0.058 and (x < 7 or x > W - 8 or y > H - 8):
                 _puto(x, y, PINE)
 
+# Penanda air + garis pantai. Bentuk air tidak pernah di-hardcode per tepi:
+# tiap sel air dilihat keempat tetangganya, dan ubin pantai yang cocok dipakai,
+# jadi kolam yang melobang dan sungai 2 ubin mendapat bank yang sama rapinya.
+func _mark_water(x: int, y: int) -> void:
+    _water[y * W + x] = 1
+    _putw(x, y, WATER)
+    _puto(x, y, WATER_BLOCK)
+
+func _is_water(x: int, y: int) -> bool:
+    if not _in(x, y):
+        return true
+    return _water[y * W + x] == 1
+
+func paint_shores() -> void:
+    var plain := 0
+    var odd := 0
+    for y in range(H):
+        for x in range(W):
+            if _water[y * W + x] == 0:
+                continue
+            var open_n := not _is_water(x, y - 1)
+            var open_s := not _is_water(x, y + 1)
+            var open_w := not _is_water(x - 1, y)
+            var open_e := not _is_water(x + 1, y)
+            var idx := WATER
+            if open_n and not open_s and not open_w and not open_e:
+                idx = SHORE_N
+            elif open_s and not open_n and not open_w and not open_e:
+                idx = SHORE_S
+            elif open_w and not open_e and not open_n and not open_s:
+                idx = SHORE_W
+            elif open_e and not open_w and not open_n and not open_s:
+                idx = SHORE_E
+            elif open_n and open_w and not open_s and not open_e:
+                idx = SHORE_NW
+            elif open_n and open_e and not open_s and not open_w:
+                idx = SHORE_NE
+            elif open_s and open_w and not open_n and not open_e:
+                idx = SHORE_SW
+            elif open_s and open_e and not open_n and not open_w:
+                idx = SHORE_SE
+            elif not open_n and not open_s and not open_w and not open_e:
+                idx = WATER
+                plain += 1
+            elif open_n and open_s and not open_e and not open_w:
+                idx = SHORE_NS
+            elif open_e and open_w and not open_n and not open_s:
+                idx = SHORE_EW
+            else:
+                # Bentuk yang tidak punya ubin khusus (tonjolan satu ubin dengan
+                # tiga sisi terbuka): pakai sudut terdekat, tetap dihitung.
+                odd += 1
+                if open_n and open_w:
+                    idx = SHORE_NW
+                elif open_n and open_e:
+                    idx = SHORE_NE
+                elif open_s and open_w:
+                    idx = SHORE_SW
+                elif open_s and open_e:
+                    idx = SHORE_SE
+                elif open_n:
+                    idx = SHORE_N
+                elif open_s:
+                    idx = SHORE_S
+                elif open_w:
+                    idx = SHORE_W
+                elif open_e:
+                    idx = SHORE_E
+                else:
+                    idx = WATER
+            _putw(x, y, idx)
+    print("  air: interior=", plain, " bentuk_pakai_ubin_sekedarnya=", odd)
+    # Cincin pasir di darat: rumput tidak pernah menempel langsung ke air.
+    for y in range(H):
+        for x in range(W):
+            if _water[y * W + x] == 1:
+                continue
+            if not (_gi(x, y) in GROUND_VARIANTS):
+                continue
+            var touches := false
+            for dy in range(-1, 2):
+                for dx in range(-1, 2):
+                    if dx == 0 and dy == 0:
+                        continue
+                    if _is_water(x + dx, y + dy):
+                        touches = true
+                if touches:
+                    break
+            if touches:
+                _putg(x, y, SAND)
+
 func paint_worn_edges() -> void:
     # Rumput aus satu ubin di sekeliling jalan, plaza, dan bangunan: memecah
     # batas keras antara dua warna rata.
@@ -506,9 +611,6 @@ func build_scene(ts: TileSet) -> PackedScene:
     root.add_child(ground)
     ground.owner = root
     var water := make_layer("WaterLayer", ts, _w)
-    var shimmer := ShaderMaterial.new()
-    shimmer.shader = load("res://shaders/water_shimmer.gdshader")
-    water.material = shimmer
     root.add_child(water)
     water.owner = root
 

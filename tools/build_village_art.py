@@ -40,7 +40,11 @@ TILES = [
     ("logs", True), ("bench", True),
     ("shadow_bottom", False), ("shadow_right", False), ("shadow_corner", False),
     ("shadow_prop", False), ("empty", False), ("water_block", True),
-    ("bridge", False),
+    ("bridge", False), ("sand", False),
+    ("shore_n", True), ("shore_ne", True), ("shore_nw", True),
+    ("shore_s", True), ("shore_se", True), ("shore_sw", True),
+    ("shore_e", True), ("shore_w", True),
+    ("shore_ns", True), ("shore_ew", True),
 ]
 
 NAME_TO_IDX = {name: i for i, (name, _) in enumerate(TILES)}
@@ -192,6 +196,72 @@ def make_bridge():
     return img
 
 
+def sample_sand(water_edge_tile):
+    """Warna pasir diambil dari strip tepi atas ubin air yang sudah ada, jadi
+    bank baru menyatu dengan art yang ada, bukan warna karangan."""
+    px = water_edge_tile.convert("RGB").load()
+    acc = [0, 0, 0]
+    n = 0
+    for y in range(2, 7):
+        for x in range(2, 30):
+            c = px[x, y]
+            if c[0] > c[2]:
+                acc[0] += c[0]
+                acc[1] += c[1]
+                acc[2] += c[2]
+                n += 1
+    return tuple(v // max(n, 1) for v in acc)
+
+
+def make_sand_ground(base, sand, rng_seed=7):
+    img = base.copy()
+    d = ImageDraw.Draw(img)
+    state = rng_seed
+    for y in range(CELL):
+        for x in range(CELL):
+            state = (state * 1103515245 + 12345) & 0x7FFFFFFF
+            j = ((state >> 16) % 21) - 10
+            d.point((x, y), fill=(
+                max(0, min(255, sand[0] + j)),
+                max(0, min(255, sand[1] + j)),
+                max(0, min(255, sand[2] + j))))
+    for i in range(9):
+        x = (i * 13 + 5) % CELL
+        y = (i * 11 + 3) % CELL
+        d.point((x, y), fill=(sand[0] - 22, sand[1] - 20, sand[2] - 14))
+        d.point(((x + 1) % CELL, y), fill=(sand[0] - 12, sand[1] - 10, sand[2] - 6))
+    return img
+
+
+def make_shore(water, sand, wet, edges):
+    """Ubin air dengan strip pasir di sisi yang berbatasan dengan darat."""
+    img = water.copy()
+    d = ImageDraw.Draw(img)
+    band = 9
+    if "n" in edges:
+        d.rectangle((0, 0, CELL - 1, band - 1), fill=sand)
+        d.line((0, band, CELL - 1, band), fill=wet)
+    if "s" in edges:
+        d.rectangle((0, CELL - band, CELL - 1, CELL - 1), fill=sand)
+        d.line((0, CELL - band - 1, CELL - 1, CELL - band - 1), fill=wet)
+    if "w" in edges:
+        d.rectangle((0, 0, band - 1, CELL - 1), fill=sand)
+        d.line((band, 0, band, CELL - 1), fill=wet)
+    if "e" in edges:
+        d.rectangle((CELL - band, 0, CELL - 1, CELL - 1), fill=sand)
+        d.line((CELL - band - 1, 0, CELL - band - 1, CELL - 1), fill=wet)
+    state = 1234
+    for y in range(CELL):
+        for x in range(CELL):
+            inside = (x < band or x >= CELL - band or y < band or y >= CELL - band)
+            if not inside:
+                continue
+            state = (state * 1103515245 + 12345) & 0x7FFFFFFF
+            if (state >> 16) % 7 == 0:
+                d.point((x, y), fill=(sand[0] - 18, sand[1] - 16, sand[2] - 10))
+    return img
+
+
 def build():
     ground = Image.open(GROUND_SHEET).convert("RGB")
     props = Image.open(PROPS_SHEET).convert("RGB")
@@ -280,6 +350,21 @@ def build():
     # --- tile kosong transparan: dipakai layer objek supaya sel yang tidak
     # berisi objek tetap tercatat ada (GridPath membaca layer itu) ---
     t["empty"] = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+
+    # --- tepi air: pasir darat + ubin garis pantai delapan arah ---
+    sand = sample_sand(t["water_edge"])
+    wet = (sand[0] - 34, sand[1] - 30, sand[2] - 18)
+    t["sand"] = make_sand_ground(t["grass"], sand)
+    t["shore_n"] = make_shore(t["water"], sand, wet, "n")
+    t["shore_s"] = make_shore(t["water"], sand, wet, "s")
+    t["shore_e"] = make_shore(t["water"], sand, wet, "e")
+    t["shore_w"] = make_shore(t["water"], sand, wet, "w")
+    t["shore_ne"] = make_shore(t["water"], sand, wet, "ne")
+    t["shore_nw"] = make_shore(t["water"], sand, wet, "nw")
+    t["shore_se"] = make_shore(t["water"], sand, wet, "se")
+    t["shore_sw"] = make_shore(t["water"], sand, wet, "sw")
+    t["shore_ns"] = make_shore(t["water"], sand, wet, "ns")
+    t["shore_ew"] = make_shore(t["water"], sand, wet, "ew")
 
     # --- bayangan ---
     t["shadow_prop"] = shadow("prop")
