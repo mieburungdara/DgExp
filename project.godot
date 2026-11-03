@@ -12,9 +12,13 @@ config_version=5
 
 config/name="AutoBattler RPG"
 config/description="A 2D RPG Top-Down Auto-Battler game."
-run/main_scene="uid://871isri4sxgd"
+run/main_scene="uid://dak3vg2ua63uh"
 config/features=PackedStringArray("4.5")
 config/icon="res://icon.svg"
+
+[autoload]
+
+Game="*res://main.tscn"
 
 [display]
 

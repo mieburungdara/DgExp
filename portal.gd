@@ -1,10 +1,10 @@
 extends Area2D
 
-## Gerbang antar peta. Menyentuhnya memindahkan Player ke container peta tujuan.
-## Peta tujuan dicari lewat group, jadi portal yang disimpan di dalam village.tscn
-## tidak perlu tahu jalur node scene lain (dungeon dibangun runtime).
+## Gerbang antar peta. Menyentuhnya meminta shell (Game) menukar scene peta ke
+## map_id tujuan. Yang dikirim hanya id, bukan referensi node: scene tujuan belum
+## ada di tree saat portal dipanggil, dan peta yang lama akan dibuang.
 
-@export var target_map_group: String = ""
+@export var target_map_id: StringName = &"village"
 @export var label: String = "Portal"
 
 func _ready() -> void:
@@ -27,10 +27,8 @@ func _ready() -> void:
     body_entered.connect(_on_body_entered)
 
 func _on_body_entered(body: Node2D) -> void:
-    if not body.has_method("warp_to"):
+    if not body.has_method("enter_map"):
         return
-    var target := get_tree().get_first_node_in_group(target_map_group)
-    if target == null or not target.has_method("get_arrival_point"):
-        push_warning("Portal '%s': group peta tujuan '%s' tidak punya get_arrival_point()." % [label, target_map_group])
-        return
-    body.warp_to(target, target.get_arrival_point())
+    # Ditunda: menukar scene tidak boleh dilakukan dari dalam callback fisika,
+    # karena node-node yang sedang dipakai tabrakan ikut dibuang di tengah loop.
+    Game.warp_to.call_deferred(target_map_id)

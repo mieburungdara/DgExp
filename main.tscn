@@ -1,31 +1,12 @@
-[gd_scene load_steps=6 format=3 uid="uid://871isri4sxgd"]
+[gd_scene load_steps=3 format=3 uid="uid://871isri4sxgd"]
 
 [ext_resource type="Script" uid="uid://oy6vssk4isw7" path="res://main.gd" id="1_1bvp3"]
-[ext_resource type="PackedScene" uid="uid://dak3vg2ua63uh" path="res://dungeon_5.tscn" id="2_1bvp3"]
 [ext_resource type="PackedScene" uid="uid://cia1sq31j2dkd" path="res://Player.tscn.tscn" id="2_h2yge"]
-[ext_resource type="PackedScene" uid="uid://bbrpeh4i03enn" path="res://slime.tscn" id="3_1bvp3"]
-[ext_resource type="PackedScene" path="res://village.tscn" id="4_village"]
 
-[node name="Main" type="Node2D"]
+[node name="Game" type="Node2D"]
 script = ExtResource("1_1bvp3")
 
-[node name="DungeonGen" parent="." instance=ExtResource("2_1bvp3")]
-position = Vector2(-831.7123, 43.631714)
-
-[node name="Village" parent="." instance=ExtResource("4_village")]
-position = Vector2(3000, 0)
-
-[node name="Slime" parent="." instance=ExtResource("3_1bvp3")]
-position = Vector2(-26, 213)
-
-[node name="Slime2" parent="." instance=ExtResource("3_1bvp3")]
-position = Vector2(714, 248)
-
-[node name="Slime3" parent="." instance=ExtResource("3_1bvp3")]
-position = Vector2(601, 119)
-
 [node name="Player" parent="." instance=ExtResource("2_h2yge")]
-position = Vector2(22, 283)
 
 [node name="Camera2D" type="Camera2D" parent="Player"]
 zoom = Vector2(3, 3)

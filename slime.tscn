@@ -313,6 +313,7 @@ animations = [{
 radius = 8.0
 
 [node name="Slime" type="CharacterBody2D" groups=["monsters"]]
+z_index = 10
 script = ExtResource("1_jayke")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]

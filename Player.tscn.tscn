@@ -166,6 +166,7 @@ animations = [{
 radius = 5.0
 
 [node name="Player" type="CharacterBody2D"]
+z_index = 10
 safe_margin = 2.692
 script = ExtResource("1_jukry")
 

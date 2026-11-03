@@ -52,22 +52,24 @@ extends Node
         clear_btn = false
 
 # --- DATA ---
+const MAP_ID := &"dungeon"
+
 var room_grid: Dictionary = {} # (Vector2i) -> bool. Menyimpan posisi LOGIS (0,0), (1,0) dsb.
 
 # Dipakai untuk memeriksa kelayakan ubin spawn. Harus Array[Vector2i] agar hasil
 # penjumlahan tetap bertipe, bukan Variant.
 const _NEIGHBOR_DIRS: Array[Vector2i] = [Vector2i.ZERO, Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]
 
-# TileMapLayer dipetakan lewat group supaya player dan main.gd bisa memperlakukan
-# dungeon dan desa dengan satu kontrak, tanpa jalur node yang di-hardcode.
+# Peta ini mendaftar dirinya ke shell (Game) saat scene dijalankan; di editor
+# tidak ada Game, jadi semuanya dilewati.
 func _ready() -> void:
-    add_to_group("game_map")
-    add_to_group("dungeon_map")
-    if not Engine.is_editor_hint():
-        # Saat main scene dijalankan, SpawnPoints masih kosong di file. Diisi sekarang
-        # supaya monster punya tempat muncul tanpa harus menekan Generate dulu.
-        fill_spawn_points()
-        _spawn_village_portal()
+    if Engine.is_editor_hint():
+        return
+    # Saat main scene dijalankan, SpawnPoints masih kosong di file. Diisi sekarang
+    # supaya monster punya tempat muncul tanpa harus menekan Generate dulu.
+    fill_spawn_points()
+    _spawn_village_portal()
+    Game.on_map_ready(self)
 
 # Player yang datang dari desa mendarat dua ubin di bawah pintu, bukan tepat di
 # atasnya: kalau mendarat di dalam area portal, begitu kunci warp habis gerbangnya
@@ -81,6 +83,9 @@ func _portal_cell() -> Vector2i:
     return Vector2i(int(room_width / 2.0), int(room_height / 2.0))
 
 # --- KONTRAK PETA (sama seperti village.gd) ---
+func get_map_id() -> StringName:
+    return MAP_ID
+
 func get_grid_layer() -> TileMapLayer:
     return tile_map_layer
 
@@ -385,7 +390,7 @@ func _spawn_village_portal() -> void:
     var portal := Area2D.new()
     portal.name = "PortalToVillage"
     portal.set_script(village_portal_script)
-    portal.set("target_map_group", "village_map")
+    portal.set("target_map_id", &"village")
     portal.set("label", "Ke Desa")
     add_child(portal)
     portal.global_position = _cell_world(_portal_cell())
