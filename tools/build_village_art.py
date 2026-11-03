@@ -7,15 +7,15 @@ jadi indeks tidak bisa berbeda antar file. Jalankan:
 
     python tools/build_village_art.py
 
-Aset sumber (hasil imagegen, disimpan di vibe_images/) dipakai sebagai master:
+Aset sumber (hasil imagegen, disimpan di .arsip/village_master/) dipakai sebagai master:
 lembar ground/rumah dan lembar prop. Varian rumput, atap, cerobong, dan tile
 bayangan diturunkan secara deterministik dari master itu.
 """
 from PIL import Image, ImageDraw, ImageFilter
 import os, sys
 
-GROUND_SHEET = "vibe_images/village_tiles_raw_1793732478596_8fc33765.png"
-PROPS_SHEET = "vibe_images/village_props_raw_1793734848434_aeb5da23.png"
+GROUND_SHEET = ".arsip/village_master/village_tiles_raw_1793732478596_8fc33765.png"
+PROPS_SHEET = ".arsip/village_master/village_props_raw_1793734848434_aeb5da23.png"
 OUT_ATLAS = "village_tiles.png"
 OUT_TRES = "village_tileset.tres"
 

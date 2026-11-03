@@ -1,0 +1,7 @@
+[gd_resource type="Resource" script_class="DungeonLevelData" load_steps=2 format=3 uid="uid://ja1rdnyl81q3"]
+
+[ext_resource type="Script" uid="uid://ch7nkcebjwunb" path="res://scripts/resources/DungeonLevelData.gd" id="1_g1m35"]
+
+[resource]
+script = ExtResource("1_g1m35")
+metadata/_custom_type_script = "uid://ch7nkcebjwunb"

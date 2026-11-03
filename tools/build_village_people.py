@@ -8,7 +8,7 @@ bawah kanvas supaya posisi node = posisi kaki.
 from PIL import Image
 import os, sys
 
-SHEET = "vibe_images/village_people_raw_1793740413892_cc86239b.png"
+SHEET = ".arsip/village_master/village_people_raw_1793740413892_cc86239b.png"
 OUT = "art/people"
 CELL = 256
 

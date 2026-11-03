@@ -2,3 +2,8 @@
 **.import
 **.bin
 **.godot/
+# Master aset hasil imagegen + PNG yang tidak dirujuk kode: tetap di disk,
+# tidak ikut version control.
+.arsip/
+# Harness periksa dan screenshot sementara.
+.tmp/
