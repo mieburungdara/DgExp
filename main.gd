@@ -33,10 +33,9 @@ var _saved_positions: Dictionary = {} # map_id -> Vector2
 
 func _ready() -> void:
     spawn_timer.timeout.connect(_on_spawn_timer_timeout)
-    player.map_changed.connect(refresh_monster_buttons)
+    player.map_changed.connect(_on_targets_changed)
     player.hp_changed.connect(_on_player_hp_changed)
-    hud.grind_pressed.connect(refresh_monster_buttons)
-    hud.target_pressed.connect(_on_hud_target_pressed)
+    hud.grind_pressed.connect(_on_grind_pressed)
     coins_changed.connect(_on_coins_changed)
     _on_coins_changed(coins)
     hud.set_kills(kills)
@@ -77,7 +76,7 @@ func on_map_ready(map: Node) -> void:
     var pos: Vector2 = _saved_positions.get(id, map.call("get_arrival_point"))
     player.enter_map(map, pos)
     _restore_monsters(id)
-    refresh_monster_buttons()
+    _on_targets_changed()
     # Peta lama sudah dibuang, jadi panel toko tidak boleh tertinggal terbuka.
     shop.close_panel()
 
@@ -160,24 +159,54 @@ func _spawn_slime():
     add_child(new_slime)
     new_slime.global_position = chosen.global_position
 
-    refresh_monster_buttons()
+    _on_targets_changed()
 
 func randomize_timer():
     # Mengatur waktu tunggu berikutnya antara 2 sampai 7 detik
     spawn_timer.wait_time = randf_range(2.0, 7.0)
     spawn_timer.start()
 
-func refresh_monster_buttons():
-    # Hanya peta aktif yang punya monster di tree, jadi daftar ini otomatis
-    # sesuai peta tempat player berada. Chip dibangun ulang dari daftar ini;
-    # HP-nya diperbarui sendiri oleh HUD tiap setengah detik.
-    var living: Array = []
+func monsters_here() -> int:
+    # Hanya peta aktif yang punya monster di tree, karena scene peta lama ikut
+    # dibuang saat warp.
+    var n := 0
     for m in get_tree().get_nodes_in_group("monsters"):
         if is_instance_valid(m) and not m.get("is_dead"):
-            living.append(m)
-    hud.set_monsters(living)
-    for m in living:
-        _watch(m)
+            n += 1
+    return n
+
+
+func _on_targets_changed() -> void:
+    for m in get_tree().get_nodes_in_group("monsters"):
+        if is_instance_valid(m) and not m.get("is_dead"):
+            _watch(m)
+
+
+## GRIND: cari monster terdekat yang benar-benar bisa dijangkau di peta ini,
+## lalu serang. Yang di luar grid peta (mis. monster dungeon saat player di
+## desa) tidak dihitung, jadi tombol tidak pernah "berhasil" tanpa efek.
+func _on_grind_pressed() -> void:
+    _on_targets_changed()
+    var best: Node = null
+    var best_dist := INF
+    for m in get_tree().get_nodes_in_group("monsters"):
+        if not is_instance_valid(m) or m.get("is_dead"):
+            continue
+        var mp := m as Node2D
+        if not player.can_reach(mp.global_position):
+            continue
+        var d: float = player.global_position.distance_to(mp.global_position)
+        if d < best_dist:
+            best_dist = d
+            best = mp
+    if best == null:
+        if monsters_here() > 0:
+            hud.flash("Semua monster di peta ini tidak bisa dijangkau.")
+        else:
+            hud.flash("Belum ada monster di peta ini.")
+        return
+    player.go_to_monster(best)
+    hud.flash("Mencari sasaran terdekat... %.0f px" % best_dist, 1.2)
 
 
 # Tanda "sudah dipantau" ditempel di monster itu sendiri, bukan di kamus
@@ -198,11 +227,4 @@ func _on_monster_exiting(monster: Node) -> void:
         kills += 1
         hud.set_kills(kills)
         add_coins(KILL_REWARD)
-    refresh_monster_buttons()
-
-
-func _on_hud_target_pressed(m) -> void:
-    if is_instance_valid(m) and not m.get("is_dead"):
-        player.go_to_monster(m)
-    else:
-        refresh_monster_buttons()
+    _on_targets_changed()

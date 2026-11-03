@@ -1,18 +1,14 @@
 extends CanvasLayer
 
-## HUD bertema: bar status di atas, dock aksi di bawah. Semua kontrol dibuat di
-## kode supaya tata letaknya bisa diukur (lihat report_geometry), bukan
-## dikira-kira di inspector — versi lama punya 10 tombol yang butuh 690 px di
-## wadah 429 px dan menutupi arena permainan.
+## HUD bertema: bar status di atas, satu aksi di bawah. Daftar monster sengaja
+## tidak ditampilkan — yang penting hanya "sasaran sekarang" satu baris, dan
+## GRIND yang mencari serta menyerang sasaran terdekat. Semua kontrol dibangun
+## dari kode supaya tata letaknya bisa diukur (report_geometry), bukan
+## dikira-kira di inspector.
 
 signal grind_pressed
-signal target_pressed(monster: Node)
 
 const ICON_DIR := "res://art/ui/"
-const CHIP_W := 112.0
-const CHIP_H := 52.0
-const CHIP_COLS := 5
-const MAX_CHIPS := 10
 
 var _map_icon: TextureRect
 var _map_label: Label
@@ -20,11 +16,8 @@ var _hp_bar: ProgressBar
 var _hp_label: Label
 var _coins_label: Label
 var _kills_label: Label
-var _header: Label
-var _chips: GridContainer
-var _monsters: Array[Node] = []
-var _chip_cache := {}
-
+var _status: Label
+var _status_until := 0.0
 
 # CanvasLayer tidak punya properti theme (itu properti Control), jadi tema
 # dipasang ke dua akar kontrol dan diwariskan ke seluruh anak mereka.
@@ -102,7 +95,7 @@ func _build_dock() -> void:
     dock.theme = _theme
     dock.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
     dock.offset_left = 8.0
-    dock.offset_top = -168.0
+    dock.offset_top = -120.0
     dock.offset_right = -8.0
     dock.offset_bottom = -8.0
     add_child(dock)
@@ -112,28 +105,24 @@ func _build_dock() -> void:
     dock.add_child(row)
 
     var grind := Button.new()
+    grind.name = "Grind"
     grind.text = "GRIND"
     grind.icon = _tex("target")
     grind.expand_icon = false
-    grind.custom_minimum_size = Vector2(110, 110)
+    grind.custom_minimum_size = Vector2(150, 92)
+    grind.tooltip_text = "Cari dan serang monster terdekat di peta ini"
     grind.add_theme_font_size_override("font_size", UiTheme.FONT_TITLE)
     grind.pressed.connect(func() -> void: grind_pressed.emit())
     row.add_child(grind)
 
-    var column := VBoxContainer.new()
-    column.name = "TargetColumn"
-    column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    row.add_child(column)
-
-    _header = Label.new()
-    _header.add_theme_font_size_override("font_size", UiTheme.FONT_CAPTION)
-    _header.add_theme_color_override("font_color", UiTheme.MUTED)
-    column.add_child(_header)
-
-    _chips = GridContainer.new()
-    _chips.name = "Chips"
-    _chips.columns = CHIP_COLS
-    column.add_child(_chips)
+    _status = Label.new()
+    _status.name = "Status"
+    _status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    _status.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    _status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    _status.add_theme_font_size_override("font_size", UiTheme.FONT_CAPTION)
+    _status.add_theme_color_override("font_color", UiTheme.MUTED)
+    row.add_child(_status)
 
 
 func _icon(name: String) -> TextureRect:
@@ -171,75 +160,44 @@ func set_hp(hp: int, max_hp: int) -> void:
     _hp_label.text = "%d/%d" % [hp, max_hp]
 
 
-func set_monsters(monsters: Array) -> void:
-    _monsters.clear()
-    for m in monsters:
-        _monsters.append(m)
-    _rebuild_chips()
+## Pesan singkat (mis. "tidak ada sasaran") yang ditimpa baris sasaran lagi
+## setelah beberapa detik.
+func flash(message: String, seconds: float = 2.5) -> void:
+    _status.text = message
+    _status_until = Time.get_ticks_msec() / 1000.0 + seconds
 
 
-func _rebuild_chips() -> void:
-    for child in _chips.get_children():
-        _chips.remove_child(child)
-        child.queue_free()
-    _chip_cache.clear()
-
-    var shown := mini(_monsters.size(), MAX_CHIPS)
-    for i in range(shown):
-        var m := _monsters[i]
-        var chip := Button.new()
-        chip.name = "Chip%d" % (i + 1)
-        chip.custom_minimum_size = Vector2(CHIP_W, CHIP_H)
-        chip.icon = _tex("skull")
-        chip.expand_icon = false
-        chip.add_theme_font_size_override("font_size", UiTheme.FONT_CAPTION)
-        var bound := m
-        chip.pressed.connect(func() -> void:
-            if is_instance_valid(bound):
-                target_pressed.emit(bound))
-        _chips.add_child(chip)
-        _chip_cache[chip.get_instance_id()] = m
-
-    var extra := _monsters.size() - shown
-    var caption := "SASARAN %d" % _monsters.size()
-    if extra > 0:
-        caption += "  (+%d di luar layar)" % extra
-    _header.text = caption
-    _refresh_chip_labels()
+func status_text() -> String:
+    return _status.text
 
 
-## Teks chip diperbarui terpisah dari pembuatannya: HP monster berubah terus,
-## tapi membangun ulang tombol tiap 0,5 detik membuang koneksi dan membebaskan
-## node yang sedang dipegang player.
-func _refresh_chip_labels() -> void:
-    for child in _chips.get_children():
-        var chip := child as Button
-        if chip == null:
-            continue
-        var m = _chip_cache.get(chip.get_instance_id())
-        if m == null or not is_instance_valid(m):
-            chip.text = "—"
-            continue
-        chip.text = "%s %d" % [_short_name(m.get("monster_name")), int(m.get("hp"))]
-
-
-func _short_name(full) -> String:
-    if full == null:
-        return "Monster"
-    var parts := String(full).split(" ")
-    return String(parts[0]).substr(0, 5)
-
-
+## Baris sasaran dibaca sendiri dari player tiap frame: jaraknya berubah terus
+## saat mengejar, dan memberi tahunya lewat sinyal berarti shell harus tahu
+## setiap langkah player.
 func _process(_delta: float) -> void:
-    _refresh_chip_labels()
+    if _status_until > 0.0:
+        if float(Time.get_ticks_msec()) / 1000.0 < _status_until:
+            return
+        _status_until = 0.0
 
-
-func chip_count() -> int:
-    return _chips.get_child_count()
-
-
-func caption() -> String:
-    return _header.text
+    var game := get_parent()
+    var p = game.get("player")
+    if p == null:
+        _status.text = ""
+        return
+    var m = p.get("target_monster")
+    if m == null or not is_instance_valid(m):
+        var here: int = game.call("monsters_here")
+        if here > 0:
+            _status.text = "%d monster di peta ini — tekan GRIND." % here
+        else:
+            _status.text = "Peta ini aman, tidak ada sasaran."
+        _status.add_theme_color_override("font_color", UiTheme.MUTED)
+        return
+    var dist: float = p.global_position.distance_to(m.global_position)
+    _status.text = "Sasaran: %s  HP %d  jarak %.0f px" % [
+        String(m.get("monster_name")), int(m.get("hp")), dist]
+    _status.add_theme_color_override("font_color", UiTheme.GOLD if dist > 24.0 else UiTheme.GOOD)
 
 
 func report_geometry() -> void:
@@ -249,11 +207,7 @@ func report_geometry() -> void:
     print("viewport=%.0fx%.0f" % [vp.x, vp.y])
     print("  TopBar  y=%.0f..%.0f tinggi=%.0f" % [top.position.y, top.position.y + top.size.y, top.size.y])
     print("  Dock    y=%.0f..%.0f tinggi=%.0f" % [dock.position.y, dock.position.y + dock.size.y, dock.size.y])
-    var count: int = _chips.get_child_count()
-    var rows: int = int(ceilf(count / float(CHIP_COLS)))
-    print("  chip    %d x %.0f px, %d baris -> baris penuh butuh lebar %.0f, tersedia %.0f" % [
-        count, CHIP_W, rows, (CHIP_W + 6.0) * CHIP_COLS, _chips.size.x])
     print("  arena bersih = %.0f px (%.1f%% dari tinggi)" % [
         dock.position.y - (top.position.y + top.size.y),
         100.0 * (dock.position.y - (top.position.y + top.size.y)) / vp.y])
-    print("  header='%s'" % _header.text)
+    print("  status='%s'" % _status.text)
