@@ -4,12 +4,14 @@ extends CharacterBody2D
 @export var speed: float = 200.0
 @export var hp: int = 100  # Dipastikan mulai dengan angka 100
 @export var attack_damage: int = 10
-@export var turn_lookahead: float = 24.0  # px titik lihat di sepanjang jalur; makin besar makin lebar lengkung belokan
+@export var turn_lookahead: float = 12.0  # px titik lihat di sepanjang jalur; makin besar makin lebar lengkung belokan
+@export var max_turn_deg_per_sec: float = 540.0  # berapa cepat karakter boleh ganti arah; membatasi sentakan di sudut tajam
 
 # --- VARIABEL KONTROL ---
 var target_monster = null
 var is_attacking: bool = false
 var _replan_nudge := 0.0
+var _heading := Vector2.RIGHT
 
 # --- HUBUNGAN KE NODE ---
 @onready var nav_agent = $NavigationAgent2D
@@ -49,7 +51,7 @@ func _physics_process(_delta):
 
     # Logika berjalan menuju posisi terbaru monster
     if not nav_agent.is_navigation_finished():
-        var direction = global_position.direction_to(_lookahead_point())
+        var direction = _limit_turn(global_position.direction_to(_lookahead_point()))
 
         velocity = direction * speed
         move_and_slide()
@@ -62,6 +64,23 @@ func _physics_process(_delta):
         play_animation("idle")
 
 
+# Membatasi kecepatan ganti arah supaya sudut tajam dilewati sebagai lengkungan,
+# bukan sentakan satu tick. Radius belok efektif = speed / laju_putur (radian).
+func _limit_turn(desired: Vector2) -> Vector2:
+    if desired == Vector2.ZERO:
+        return Vector2.ZERO
+    var step := deg_to_rad(max_turn_deg_per_sec * get_physics_process_delta_time())
+    var ang := _heading.angle_to(desired)
+    if absf(ang) <= step:
+        _heading = desired
+    else:
+        _heading = _heading.rotated(signf(ang) * step)
+    return _heading
+
+
+# Titik sejauh turn_lookahead px di depan, diukur sepanjang jalur, TAPI hanya selama
+# garis lurus dari karakter ke titik itu benar-benar bebas dinding. Tanpa pemeriksaan
+# ini, memotong sudut justru mengarahkan karakter ke sisi dinding dan ia tertahan di situ.
 # Titik sejauh turn_lookahead px di depan, diukur sepanjang jalur. Karena titik ini
 # sudah "melihat" ke segmen sesudah sudut, belokan berubah menjadi lengkung alih-alih
 # patahan tepat di titik sudut jalur.

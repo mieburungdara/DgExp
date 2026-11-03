@@ -1,6 +1,9 @@
 @tool
 extends Node
 
+# Sub-ubin per ubin untuk rasterisasi margin navmesh (2 -> 8px pada ubin 16px).
+const SUBDIV := 2
+
 # --- PENGATURAN ISAAC GENERATOR ---
 @export_group("Map Settings")
 @export var room_count: int = 15
@@ -8,6 +11,12 @@ extends Node
 @export var room_height: int = 9  # Tinggi 1 ruangan (dalam tiles)
 @export var corridor_gap: int = 4 # Jarak lorong antar ruangan (0 = nempel dinding)
 @export var connection_width: int = 2 # Lebar pintu/lorong
+
+@export_group("Navmesh")
+# Setengah ukuran badan karakter + offset bentuk tabrakannya (CollisionShape2D player
+# bergeser 1px ke atas dari titik badan), plus sedikit kelonggaran. Clearance 5 kurang,
+# 8 sudah mulai menyesakkan lorong sempit; 6 paling halus terukur.
+@export var nav_body_clearance: Vector2 = Vector2(6, 6)
 
 @export_group("Tile Settings")
 @export var tile_map_layer: TileMapLayer
@@ -137,33 +146,30 @@ func rebake_navmesh() -> void:
 
     var step_x: Vector2 = tile_map_layer.map_to_local(Vector2i(1, 0)) - tile_map_layer.map_to_local(Vector2i(0, 0))
     var step_y: Vector2 = tile_map_layer.map_to_local(Vector2i(0, 1)) - tile_map_layer.map_to_local(Vector2i(0, 0))
-    var half: Vector2 = Vector2(step_x.x, step_y.y) * 0.5
 
     var walk := {}
     for cell in tile_map_layer.get_used_cells():
         var td := tile_map_layer.get_cell_tile_data(cell)
-        if td == null or td.get_navigation_polygon(0) == null:
-            continue
-        if not walk.has(cell.y):
-            walk[cell.y] = {}
-        walk[cell.y][cell.x] = true
+        if td != null and td.get_navigation_polygon(0) != null:
+            walk[cell] = true
 
-    # Navmesh harus punya ruang aman sebesar badan karakter: kalau tidak, jalur
-    # menapak tepat di tepi dinding dan CharacterBody menggerus dinding sampai macet.
+    # Navmesh harus menyisakan ruang aman sebesar badan karakter di SEMUA arah,
+    # termasuk diagonal. Erosi per-ubin tidak melindungi sudut diagonal dan menutup
+    # lorong sempit, jadi area jalan diraster pada sub-ubin.
+    var tile_v := Vector2(step_x.x, step_y.y)
+    var sub_v: Vector2 = tile_v / float(SUBDIV)
+    var origin: Vector2 = tile_map_layer.map_to_local(Vector2i(0, 0)) - tile_v * 0.5
     var xs_by_row := {}
-    for y in walk:
-        for x in walk[y]:
-            var safe := true
-            for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-                var ny: int = y + d.y
-                if not walk.has(ny) or not walk[ny].has(x + d.x):
-                    safe = false
-                    break
-            if not safe:
-                continue
-            if not xs_by_row.has(y):
-                xs_by_row[y] = []
-            xs_by_row[y].append(x)
+    for cell in walk:
+        for sy in range(SUBDIV):
+            for sx in range(SUBDIV):
+                var mid: Vector2 = origin + (Vector2(cell) * SUBDIV + Vector2(sx, sy) + Vector2(0.5, 0.5)) * sub_v
+                if not _body_fits(mid, origin, tile_v, walk):
+                    continue
+                var sub_row: int = cell.y * SUBDIV + sy
+                if not xs_by_row.has(sub_row):
+                    xs_by_row[sub_row] = []
+                xs_by_row[sub_row].append(cell.x * SUBDIV + sx)
 
     var spans := {}
     for y in xs_by_row:
@@ -210,10 +216,10 @@ func rebake_navmesh() -> void:
     for y in ys:
         for s in segments[y]:
             var corners := PackedVector2Array([
-                _cell_corner(Vector2i(s[0], y), half, false, false),
-                _cell_corner(Vector2i(s[1], y), half, true, false),
-                _cell_corner(Vector2i(s[1], y), half, true, true),
-                _cell_corner(Vector2i(s[0], y), half, false, true),
+                _sub_corner(origin, sub_v, s[0], y, false, false),
+                _sub_corner(origin, sub_v, s[1], y, true, false),
+                _sub_corner(origin, sub_v, s[1], y, true, true),
+                _sub_corner(origin, sub_v, s[0], y, false, true),
             ])
             var idx := PackedInt32Array([])
             for c in corners:
@@ -247,9 +253,24 @@ func _to_spans(xs: Array) -> Array:
         b = x
     return spans
 
-func _cell_corner(cell: Vector2i, half: Vector2, right: bool, bottom: bool) -> Vector2:
-    var c: Vector2 = tile_map_layer.map_to_local(cell)
-    return Vector2(c.x + half.x if right else c.x - half.x, c.y + half.y if bottom else c.y - half.y)
+func _sub_corner(origin: Vector2, sub_v: Vector2, sx: int, sy: int, right: bool, bottom: bool) -> Vector2:
+    var p := origin + Vector2(sx, sy) * sub_v
+    if right:
+        p.x += sub_v.x
+    if bottom:
+        p.y += sub_v.y
+    return p
+
+# Badan karakter harus seluruhnya di dalam ubin lantai, tidak hanya titik tengahnya.
+func _body_fits(center: Vector2, origin: Vector2, tile_v: Vector2, walk: Dictionary) -> bool:
+    var r := Rect2(center - nav_body_clearance, nav_body_clearance * 2.0)
+    var c0 := Vector2i(floori((r.position.x - origin.x) / tile_v.x), floori((r.position.y - origin.y) / tile_v.y))
+    var c1 := Vector2i(floori((r.end.x - origin.x - 0.001) / tile_v.x), floori((r.end.y - origin.y - 0.001) / tile_v.y))
+    for cy in range(c0.y, c1.y + 1):
+        for cx in range(c0.x, c1.x + 1):
+            if not walk.has(Vector2i(cx, cy)):
+                return false
+    return true
 
 func get_random_floor() -> Vector2i:
     # Cek override dari Level Data dulu
