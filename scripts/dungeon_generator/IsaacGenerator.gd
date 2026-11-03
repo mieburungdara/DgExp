@@ -14,6 +14,9 @@ extends Node
 @export var spawn_point_count: int = 12 # Berapa titik spawn dibuat dari ubin lantai
 @export var spawn_min_spacing: int = 6 # Jarak minimum antar titik spawn, dalam ubin
 
+@export_group("Portal")
+@export var village_portal_script: Script = preload("res://portal.gd")
+
 
 @export_group("Tile Settings")
 @export var tile_map_layer: TileMapLayer
@@ -55,15 +58,37 @@ var room_grid: Dictionary = {} # (Vector2i) -> bool. Menyimpan posisi LOGIS (0,0
 # penjumlahan tetap bertipe, bukan Variant.
 const _NEIGHBOR_DIRS: Array[Vector2i] = [Vector2i.ZERO, Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]
 
-# TileMapLayer didaftarkan lewat group supaya karakter bisa membangun grid jalurnya
-# tanpa perlu jalur node yang di-hardcode.
+# TileMapLayer dipetakan lewat group supaya player dan main.gd bisa memperlakukan
+# dungeon dan desa dengan satu kontrak, tanpa jalur node yang di-hardcode.
 func _ready() -> void:
-    if tile_map_layer:
-        tile_map_layer.add_to_group("dungeon_grid")
-    # Saat main scene dijalankan, SpawnPoints masih kosong di file. Diisi sekarang
-    # supaya monster punya tempat muncul tanpa harus menekan Generate dulu.
+    add_to_group("game_map")
+    add_to_group("dungeon_map")
     if not Engine.is_editor_hint():
+        # Saat main scene dijalankan, SpawnPoints masih kosong di file. Diisi sekarang
+        # supaya monster punya tempat muncul tanpa harus menekan Generate dulu.
         fill_spawn_points()
+        _spawn_village_portal()
+
+# Player yang datang dari desa mendarat dua ubin di bawah pintu, bukan tepat di
+# atasnya: kalau mendarat di dalam area portal, begitu kunci warp habis gerbangnya
+# bisa terpicu lagi begitu karakter bergeser.
+const PORTAL_LANDING_OFFSET := Vector2i(0, 2)
+
+func _cell_world(cell: Vector2i) -> Vector2:
+    return tile_map_layer.to_global(tile_map_layer.map_to_local(cell))
+
+func _portal_cell() -> Vector2i:
+    return Vector2i(int(room_width / 2.0), int(room_height / 2.0))
+
+# --- KONTRAK PETA (sama seperti village.gd) ---
+func get_grid_layer() -> TileMapLayer:
+    return tile_map_layer
+
+func get_spawn_points() -> Node:
+    return get_node_or_null("NavigationRegion2D/SpawnPoints")
+
+func get_arrival_point() -> Vector2:
+    return _cell_world(_portal_cell() + PORTAL_LANDING_OFFSET)
 
 func generate_dungeon():
     if not tile_map_layer:
@@ -124,6 +149,9 @@ func generate_dungeon():
         spawn_objects()
     else:
         print("Warning: Level Data belum di-assign, tidak ada object yang di-spawn.")
+
+    # 5. PINTU KE DESA — hanya saat game jalan; di editor tidak disimpan.
+    _spawn_village_portal()
 func count_neighbors(pos: Vector2i) -> int:
     var count = 0
     for dir in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
@@ -344,3 +372,20 @@ func _is_open_cell(cell: Vector2i) -> bool:
         if td == null or td.get_collision_polygons_count(0) > 0:
             return false
     return true
+
+
+# Portal balik ke desa, diletakkan di tengah ruang awal. Dibuat lewat script, bukan
+# sub-scene, supaya tidak ikut tersimpan saat dungeon di-generate di editor.
+func _spawn_village_portal() -> void:
+    if Engine.is_editor_hint() or village_portal_script == null:
+        return
+    var old := get_node_or_null("PortalToVillage")
+    if old != null:
+        old.free()
+    var portal := Area2D.new()
+    portal.name = "PortalToVillage"
+    portal.set_script(village_portal_script)
+    portal.set("target_map_group", "village_map")
+    portal.set("label", "Ke Desa")
+    add_child(portal)
+    portal.global_position = _cell_world(_portal_cell())

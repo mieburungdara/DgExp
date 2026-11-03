@@ -91,6 +91,12 @@ func is_ready() -> bool:
     return _layer != null and _w > 0 and _walk.count(1) > 0
 
 
+# True kalau titik dunia berada di dalam rect grid yang sedang dibangun. Dipakai
+# untuk menolak target yang ternyata berada di peta lain.
+func contains_world(world: Vector2) -> bool:
+    return is_ready() and _index(_cell_of(world)) >= 0
+
+
 func find_path(from_world: Vector2, to_world: Vector2) -> PackedVector2Array:
     if not is_ready():
         return PackedVector2Array()

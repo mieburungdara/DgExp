@@ -1,5 +1,7 @@
 extends CharacterBody2D
 
+signal map_changed
+
 # --- STATISTIK PLAYER ---
 @export var speed: float = 200.0
 @export var hp: int = 100  # Dipastikan mulai dengan angka 100
@@ -16,6 +18,9 @@ var _path := PackedVector2Array()
 var _path_idx := 0
 var _planned_for := Vector2.INF
 var _replan_in := 0.0
+var _active_map: Node2D
+var _clearance := Vector2(6, 6)
+var _portal_lock := 0.0
 
 # --- HUBUNGAN KE NODE ---
 @onready var anim = $AnimatedSprite2D
@@ -26,16 +31,77 @@ var _replan_in := 0.0
 func _ready():
     hp_bar.setup(hp)  # Panggil fungsi setup saat mulai
 
-    var layer := get_tree().get_first_node_in_group("dungeon_grid") as TileMapLayer
-    if layer == null:
-        push_error("Player: TileMapLayer ber-group 'dungeon_grid' tidak ditemukan, pathfinding tidak aktif.")
-        return
     # Margin jalur diambil dari bentuk tabrakan itu sendiri (setengah ukuran +
     # offsetnya), jadi grid tidak bisa diam-diam berbeda dari badan karakter.
-    _grid.build(layer, _collision.shape.get_rect().size * 0.5 + _collision.position.abs())
+    _clearance = _collision.shape.get_rect().size * 0.5 + _collision.position.abs()
+
+    var map := _map_at(global_position)
+    if map == null:
+        push_error("Player: tidak ada peta (group 'game_map') yang memuat posisi awal, pathfinding tidak aktif.")
+        return
+    _set_active_map(map)
+
+
+# Peta yang rect ubinnya memuat titik ini; dipakai saat awal dan setelah warp.
+func _map_at(pos: Vector2) -> Node2D:
+    var first: Node2D = null
+    for m in get_tree().get_nodes_in_group("game_map"):
+        var map := m as Node2D
+        if not map.has_method("get_grid_layer"):
+            continue
+        var layer := map.call("get_grid_layer") as TileMapLayer
+        if layer == null:
+            continue
+        if first == null:
+            first = map
+        if _layer_rect(layer).grow(8.0).has_point(pos):
+            return map
+    return first
+
+
+func _layer_rect(layer: TileMapLayer) -> Rect2:
+    var used: Rect2i = layer.get_used_rect()
+    var half := Vector2(layer.tile_set.tile_size) * 0.5
+    var a := layer.to_global(layer.map_to_local(used.position)) - half
+    var b := layer.to_global(layer.map_to_local(used.end)) - half
+    return Rect2(a, b - a)
+
+
+func get_active_map() -> Node2D:
+    return _active_map
+
+
+func can_reach(pos: Vector2) -> bool:
+    return _grid.contains_world(pos)
+
+
+func _set_active_map(map: Node2D) -> void:
+    _active_map = map
+    _grid.build(map.call("get_grid_layer"), _clearance)
+    _path = PackedVector2Array()
+    _path_idx = 0
+    _planned_for = Vector2.INF
+    _replan_in = 0.0
+    map_changed.emit()
+
+
+# Pindah peta: buang tujuan lama (monster itu ada di peta yang ditinggalkan),
+# pasang posisi, lalu bangun grid peta baru. Kunci singkat mencegah portal tujuan
+# langsung memicu warp balik pada frame yang sama.
+func warp_to(map: Node2D, dest: Vector2) -> void:
+    if _portal_lock > 0.0 or map == null or map == _active_map:
+        return
+    _portal_lock = 0.8
+    target_monster = null
+    velocity = Vector2.ZERO
+    global_position = dest
+    _set_active_map(map)
 
 
 func _physics_process(delta):
+    if _portal_lock > 0.0:
+        _portal_lock -= delta
+
     if hp <= 0 or is_attacking:
         return
 
@@ -135,7 +201,9 @@ func _lookahead_point() -> Vector2:
 
 # --- FUNGSI PERINTAH ---
 func go_to_monster(monster_node):
-    if is_instance_valid(monster_node):
+    # Monster di peta lain tidak bisa dijangkau jalurnya; menolak di sini lebih
+    # jujur daripada berdiri diam tanpa sebab.
+    if is_instance_valid(monster_node) and _grid.contains_world(monster_node.global_position):
         target_monster = monster_node
         is_attacking = false
         _path = PackedVector2Array()

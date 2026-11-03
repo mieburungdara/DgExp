@@ -12,21 +12,37 @@ extends Node2D
 func _ready():
     # Hubungkan sinyal timeout dari timer ke fungsi spawn
     spawn_timer.timeout.connect(_on_spawn_timer_timeout)
+    # Daftar tombol hanya berisi monster di peta yang sedang dipakai
+    player.map_changed.connect(refresh_monster_buttons)
     # Mulai spawn pertama
     randomize_timer()
     
 func _on_spawn_timer_timeout():
-    # Cek apakah monster sudah ada 10 di map
-    var current_monsters = get_tree().get_nodes_in_group("monsters").size()
-    
-    if current_monsters < 10:
+    # Batas 10 monster berlaku per peta, bukan global: kalau dihitung global,
+    # desa akan tetap kosong selama dungeon sudah penuh.
+    if _monsters_here() < 10:
         spawn_slime()
     
     randomize_timer()
 
+func _monsters_here() -> int:
+    var n := 0
+    for m in get_tree().get_nodes_in_group("monsters"):
+        if player.can_reach(m.global_position):
+            n += 1
+    return n
+
 func spawn_slime():
-    # 1. Titik spawn disediakan DungeonGen dari ubin lantai yang layak
-    var points = $DungeonGen/NavigationRegion2D/SpawnPoints.get_children()
+    # 1. Titik spawn disediakan peta tempat player sedang berada
+    var map = player.get_active_map()
+    if map == null:
+        push_warning("Tidak ada peta aktif, monster tidak bisa di-spawn.")
+        return
+    var holder = map.call("get_spawn_points")
+    if holder == null:
+        push_warning("Peta '%s' tidak punya SpawnPoints." % map.name)
+        return
+    var points = holder.get_children()
     if points.size() == 0:
         push_warning("SpawnPoints kosong, tidak ada tempat untuk spawn monster.")
         return
@@ -66,7 +82,7 @@ func refresh_monster_buttons():
     var all_monsters = get_tree().get_nodes_in_group("monsters")
     
     for m in all_monsters:
-        if is_instance_valid(m) and not m.get("is_dead"):
+        if is_instance_valid(m) and not m.get("is_dead") and player.can_reach(m.global_position):
             var btn = Button.new()
             btn.text = "Serang " + m.monster_name
             btn.custom_minimum_size = Vector2(200, 60)
