@@ -139,14 +139,31 @@ func rebake_navmesh() -> void:
     var step_y: Vector2 = tile_map_layer.map_to_local(Vector2i(0, 1)) - tile_map_layer.map_to_local(Vector2i(0, 0))
     var half: Vector2 = Vector2(step_x.x, step_y.y) * 0.5
 
-    var xs_by_row := {}
+    var walk := {}
     for cell in tile_map_layer.get_used_cells():
         var td := tile_map_layer.get_cell_tile_data(cell)
         if td == null or td.get_navigation_polygon(0) == null:
             continue
-        if not xs_by_row.has(cell.y):
-            xs_by_row[cell.y] = []
-        xs_by_row[cell.y].append(cell.x)
+        if not walk.has(cell.y):
+            walk[cell.y] = {}
+        walk[cell.y][cell.x] = true
+
+    # Navmesh harus punya ruang aman sebesar badan karakter: kalau tidak, jalur
+    # menapak tepat di tepi dinding dan CharacterBody menggerus dinding sampai macet.
+    var xs_by_row := {}
+    for y in walk:
+        for x in walk[y]:
+            var safe := true
+            for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+                var ny: int = y + d.y
+                if not walk.has(ny) or not walk[ny].has(x + d.x):
+                    safe = false
+                    break
+            if not safe:
+                continue
+            if not xs_by_row.has(y):
+                xs_by_row[y] = []
+            xs_by_row[y].append(x)
 
     var spans := {}
     for y in xs_by_row:

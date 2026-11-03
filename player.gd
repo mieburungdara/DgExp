@@ -8,6 +8,7 @@ extends CharacterBody2D
 # --- VARIABEL KONTROL ---
 var target_monster = null
 var is_attacking: bool = false
+var _replan_nudge := 0.0
 
 # --- HUBUNGAN KE NODE ---
 @onready var nav_agent = $NavigationAgent2D
@@ -29,8 +30,13 @@ func _physics_process(_delta):
         target_monster = null
         return
 
-    # --- Update posisi target secara real-time (harus titik yang ada di navmesh) ---
-    nav_agent.target_position = _navmesh_target(target_monster.global_position)
+    # Target harus titik yang ada di navmesh. NavigationAgent hanya menghitung ulang
+    # jalur saat nilainya berubah, jadi kalau jalur selesai padahal monster masih jauh
+    # (misal karakter tersorong keluar jalur), geser target sedikit untuk memicu replan.
+    var goal := _navmesh_target(target_monster.global_position)
+    if nav_agent.is_navigation_finished() and global_position.distance_to(goal) > 40.0:
+        _replan_nudge = 0.0 if _replan_nudge > 0.0 else 0.5
+    nav_agent.target_position = goal + Vector2(_replan_nudge, 0.0)
 
     var distance_to_monster = global_position.distance_to(target_monster.global_position)
 
