@@ -22,5 +22,9 @@ func get_grid_layer() -> TileMapLayer:
 func get_spawn_points() -> Node:
     return spawn_points
 
+# Zona aman: tidak ada monster yang muncul di desa.
+func get_monsters_allowed() -> bool:
+    return false
+
 func get_arrival_point() -> Vector2:
     return arrival_point.global_position

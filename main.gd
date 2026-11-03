@@ -95,6 +95,10 @@ func _spawn_slime():
     # 1. Titik spawn disediakan peta yang sedang aktif
     if not is_instance_valid(current_map):
         return
+    # Peta bisa menandai dirinya zona aman (desa); seed dan timer sama-sama lewat
+    # sini, jadi satu pemeriksaan cukup.
+    if not current_map.call("get_monsters_allowed"):
+        return
     var holder = current_map.call("get_spawn_points")
     if holder == null:
         push_warning("Peta '%s' tidak punya SpawnPoints." % current_map.name)

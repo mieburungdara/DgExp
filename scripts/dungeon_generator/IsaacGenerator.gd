@@ -92,6 +92,9 @@ func get_grid_layer() -> TileMapLayer:
 func get_spawn_points() -> Node:
     return get_node_or_null("NavigationRegion2D/SpawnPoints")
 
+func get_monsters_allowed() -> bool:
+    return true
+
 func get_arrival_point() -> Vector2:
     return _cell_world(_portal_cell() + PORTAL_LANDING_OFFSET)
 
